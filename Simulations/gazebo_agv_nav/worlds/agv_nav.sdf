@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="agv_nav">
-    <physics name="1ms" type="ignored"><max_step_size>0.004</max_step_size><real_time_factor>5</real_time_factor></physics>
+    <physics name="1ms" type="ignored"><max_step_size>0.004</max_step_size><real_time_factor>0</real_time_factor></physics>
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"></plugin>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"></plugin>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"></plugin>

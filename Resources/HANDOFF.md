@@ -203,7 +203,8 @@ skorlarının artık eğitim-zamanı rolling skorlarına yakın çıkıp çıkma
 Not: İkinci bir izole sim örneği gerekirse (eğitim sürerken eval) `GZ_PARTITION` +
 farklı `ROS_DOMAIN_ID` kullan — `scripts/eval_diag.py` böyle koşuldu.
 
-**Bölüm 6.9'daki uçurumun teşhisi netleşti:** `sac_baseline_v2` yeni koşusunda s1 sonunda
+**[GÜNCELLENDİ — asıl kök neden bulundu, bir sonraki blok tarihçe olarak kalıyor]
+Bölüm 6.9'daki uçurumun İLK teşhisi (kısmen doğru ama eksikti):** `sac_baseline_v2` yeni koşusunda s1 sonunda
 deterministik eval yine %5 çıktı (eğitim-zamanı ~%14-22). Aynı s1 checkpoint'i
 `eval_diag.py` ile iki modda değerlendirildi: **deterministic=True → %5,
 deterministic=False → %25**. Yani +20→+5 ödül düzeltmesi kritiği stabilize etti ama uçurumun
@@ -211,7 +212,34 @@ asıl nedeni ödül ölçeği değilmiş: stokastik davranış (keşif gürült�
 politikanın ortalama aksiyonu ise henüz olgunlaşmamış (mean-action miscalibration).
 Sabit `ent_coef=0.02` entropiyi canlı tutarken ortalamanın keskinleşmesini geciktiriyor.
 Bu yüzden `curriculum_train.py::evaluate()` artık her stage sonunda **iki metriği birden**
-raporluyor (`success_rate=` deterministik, `stochastic=` stokastik; koşan sürece etkisi yok,
-sonraki koşularda devrede). Eğitim ilerledikçe deterministik metriğin stokastiğe yaklaşması
-beklenir; yaklaşmazsa ilk denenecek şey aşama-bazlı ent_coef düşürme (örn. s4-s5'te
-0.02→0.005).
+raporluyor (`success_rate=` deterministik, `stochastic=` stokastik).
+
+## 11. ASIL KÖK NEDEN (2026-09-15 akşamı): env adımı sim-süresine bağlı değildi
+
+`sac_baseline_v2` s3 sonunda deterministik eval yine %0 çıktı; s3 checkpoint'i izole
+örnekte değerlendirilince **stokastik eval de %0** çıktı (40/40 zaman aşımı) — oysa eğitim
+sırasında %6-16 görünüyordu. `eval_diag.py`'ye sim-süresi ölçümü eklenince gerçek ortaya
+çıktı:
+
+- Env `step()` süresi **duvar-saatine bağlıydı** (2× `spin_once` ≈ birkaç ms): hızlı eval'de
+  adım başına ~0.04 sim-s, eğitimde (aradaki gradyan hesabı ~20ms sayesinde) ~0.10 sim-s.
+- 0.22 m/s tavan hızla bu, eval'de episode başına ~1.8 m, eğitimde ~4.4 m menzil demek —
+  yani **s3+ hedeflerinin çoğu fiziksel olarak ulaşılamazdı**; eğitimdeki "başarılar" kutu-içi
+  örneklemede şans eseri yakın düşen hedeflerdi. §6.9 uçurumu, ödül ölçeği veya politika
+  olgunluğu değil, **eğitim ile eval'in fiilen farklı fizik bütçeleri koşmasıydı.** CPU yükü
+  bile başarı oranını değiştiriyordu.
+
+**Düzeltme (uygulandı):** `gazebo_agv_env.py` artık her adımı **sabit sim-süresine**
+kilitliyor: `control_dt=0.5` sim-s; `_wait_sim()` odom zaman damgası 0.5 s ilerleyene kadar
+spinliyor (10 s duvar-saat guard'ı var). Dünya RTF'si 5→0 (sınırsız) yapıldı. Duman testi:
+sim_dt/adım = 0.500±0.000 s, yer değiştirme 0.108 m/adım (teorik 0.11), ~42 fps boş, eğitimde
+~27 fps. Artık: dist 4 → ~37+ adım (bütçe 80), dist 12 → ~110+ (bütçe 200), dist 16 → ~145+
+(bütçe 260) — tüm aşamalar ulaşılabilir.
+
+**Koşu durumu:** `sac_baseline_v2` s4 ortasında DURDURULDU (s3+ sonuçları imkânsız-görev
+gürültüsü; `_s1.._s3.zip` checkpoint'leri ve log yalnızca tarihçe/pilot olarak saklanıyor,
+YENİ DENEYLERDE KULLANMAYIN — eski kırık dinamikle eğitildiler). Düzeltilmiş dinamikle
+`sac_baseline_v3` sıfırdan başlatıldı (27 fps, ~8 saat; çift-metrikli stage eval devrede).
+Beklenti: eğitim-zamanı başarı ile stage-sonu eval artık tutarlı olmalı ve mutlak başarı
+oranları belirgin yükselmeli. v3 de düşük kalırsa bakılacak ilk şeyler: ent_coef aşama-bazlı
+düşürme, learning_starts, ödül şekillendirmesi — ama önce yeni dinamikte bir tam koşu görün.
