@@ -3,7 +3,7 @@ so the same map layout/seed used in the lightweight prototype and later
 generalization tests is reproduced exactly as box obstacles in Gazebo.
 Each grid cell = 1 meter.
 """
-import sys, argparse
+import os, sys, argparse
 sys.path.insert(0, "/workspace")
 from envs.map_generator import symmetric_corridor, asymmetric_corridor
 
@@ -22,7 +22,7 @@ SDF_HEADER = """<?xml version="1.0" ?>
       <diffuse>0.9 0.9 0.85 1</diffuse>
     </light>
     <include>
-      <uri>/opt/ros/jazzy/share/turtlebot3_gazebo/models/turtlebot3_burger</uri>
+      <uri>{model_uri}</uri>
       <name>burger</name>
       <pose>{spawn_x} {spawn_y} 0.05 0 0 0</pose>
     </include>
@@ -174,7 +174,12 @@ def main():
     grid = gen(size=args.grid_size, rng=rng)
 
     spawn_x, spawn_y = args.grid_size / 2, args.grid_size / 2
-    sdf = SDF_HEADER.format(spawn_x=spawn_x, spawn_y=spawn_y)
+    default_uri = "/opt/ros/jazzy/share/turtlebot3_gazebo/models/turtlebot3_burger"
+    if not os.path.exists(default_uri):
+        default_uri = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "models", "turtlebot3_burger")
+    model_uri = os.environ.get("TB3_MODEL_URI", default_uri)
+    sdf = SDF_HEADER.format(spawn_x=spawn_x, spawn_y=spawn_y, model_uri=model_uri)
     size = args.grid_size
     i = 0
     for y in range(size):

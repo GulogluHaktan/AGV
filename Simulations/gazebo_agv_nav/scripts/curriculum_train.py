@@ -5,9 +5,12 @@ the whole time was the tell: episodes were timing out on the clock, not on
 a bad policy). Evaluates at the end of every stage, at that stage's own
 difficulty, so progress is visible immediately instead of only at the end.
 """
-import sys, argparse, json
+import os, sys, argparse, json
 from collections import deque
-sys.path.insert(0, "/workspace")
+# repo root for `envs` imports: /workspace inside the Docker image, or the
+# project directory itself when running natively
+sys.path.insert(0, os.environ.get("AGV_WORKSPACE",
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import numpy as np
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback

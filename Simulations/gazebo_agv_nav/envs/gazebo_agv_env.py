@@ -18,7 +18,14 @@ from nav_msgs.msg import Odometry
 
 from envs.map_generator import sample_free_cell, sample_goal_near
 
-GZ_BIN = "/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz"
+import os as _os
+import shutil as _shutil
+# Docker image puts gz under the ros-jazzy vendor prefix; native installs
+# (e.g. conda/RoboStack) have it on PATH. GZ_BIN env var overrides both.
+GZ_BIN = _os.environ.get("GZ_BIN") or (
+    "/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz"
+    if _os.path.exists("/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz")
+    else (_shutil.which("gz") or "gz"))
 
 
 def teleport(world: str, model: str, x: float, y: float, z: float = 0.05):
