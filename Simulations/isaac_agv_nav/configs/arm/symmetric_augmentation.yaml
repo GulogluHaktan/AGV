@@ -1,0 +1,5 @@
+# Arm 2: same architecture as baseline, D4-symmetric data augmentation wrapper
+name: symmetric_augmentation
+policy: MultiInputPolicy
+use_augmentation: true
+use_equivariant: false

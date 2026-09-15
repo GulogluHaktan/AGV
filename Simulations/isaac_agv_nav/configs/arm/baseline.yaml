@@ -1,0 +1,5 @@
+# Arm 1: symmetry-agnostic PPO baseline
+name: baseline
+policy: MultiInputPolicy
+use_augmentation: false
+use_equivariant: false

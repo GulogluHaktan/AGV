@@ -1,0 +1,13 @@
+defaults:
+  - arm: baseline
+  - map: symmetric
+  - _self_
+
+grid_size: 32
+max_steps: 250
+total_timesteps: 200000
+seed: 0
+n_eval_maps: 50
+model_path: null
+
+output_dir: ${hydra:runtime.output_dir}

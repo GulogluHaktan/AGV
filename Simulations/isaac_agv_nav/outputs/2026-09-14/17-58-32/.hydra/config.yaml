@@ -1,0 +1,14 @@
+arm:
+  name: symmetric_augmentation
+  policy: MultiInputPolicy
+  use_augmentation: true
+  use_equivariant: false
+map:
+  map_type: symmetric
+  n_obstacle_pairs: 6
+grid_size: 32
+max_steps: 200
+total_timesteps: 2000
+seed: 0
+n_eval_maps: 50
+output_dir: ${hydra:runtime.output_dir}

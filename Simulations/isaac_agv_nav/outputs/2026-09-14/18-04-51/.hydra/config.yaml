@@ -1,0 +1,15 @@
+arm:
+  name: baseline
+  policy: MultiInputPolicy
+  use_augmentation: false
+  use_equivariant: false
+map:
+  map_type: symmetric
+  n_obstacle_pairs: 6
+grid_size: 32
+max_steps: 200
+total_timesteps: 300000
+seed: 0
+n_eval_maps: 50
+model_path: null
+output_dir: ${hydra:runtime.output_dir}

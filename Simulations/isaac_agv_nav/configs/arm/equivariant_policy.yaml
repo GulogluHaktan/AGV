@@ -1,0 +1,7 @@
+# Arm 3: D4-equivariant (escnn E(2)-steerable) policy network — requires
+# escnn install (see scripts/install_escnn.sh); not yet runnable, see
+# envs/equivariant_policy.py TODO.
+name: equivariant_policy
+policy: EquivariantD4Policy
+use_augmentation: false
+use_equivariant: true

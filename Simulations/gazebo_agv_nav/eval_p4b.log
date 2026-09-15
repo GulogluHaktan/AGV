@@ -1,0 +1,22 @@
+episode 0: timeout dist=7.31
+episode 1: timeout dist=8.71
+episode 2: timeout dist=3.83
+episode 3: timeout dist=8.85
+episode 4: timeout dist=5.32
+episode 5: timeout dist=2.90
+episode 6: timeout dist=7.62
+episode 7: timeout dist=7.21
+episode 8: timeout dist=5.83
+episode 9: timeout dist=3.00
+episode 10: timeout dist=7.07
+episode 11: timeout dist=5.39
+episode 12: timeout dist=9.49
+episode 13: timeout dist=5.00
+episode 14: timeout dist=7.21
+episode 15: timeout dist=4.12
+episode 16: timeout dist=5.83
+episode 17: timeout dist=7.21
+episode 18: timeout dist=6.32
+episode 19: timeout dist=2.24
+
+Success rate: 0/20 = 0.00%
