@@ -72,18 +72,27 @@ def make_env(grid, grid_size, seed, max_goal_dist, max_steps, arm):
 
 
 def evaluate(model, grid, grid_size, seed, max_goal_dist, max_steps, n_episodes=20):
+    """Returns (deterministic_sr, stochastic_sr). Both are reported because the
+    deterministic mean action lags well behind the stochastic behavior early in
+    training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
+    train-vs-eval gap of HANDOFF §6.9 is mean-action miscalibration, not a
+    metric artifact), and the stochastic number is the one comparable to the
+    train-time rolling success rate."""
     env = GazeboAGVEnv(grid=grid, grid_size=grid_size, seed=seed,
                         max_goal_dist=max_goal_dist, max_steps=max_steps)
-    successes = 0
-    for ep in range(n_episodes):
-        obs, _ = env.reset()
-        terminated = truncated = False
-        while not (terminated or truncated):
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(action)
-        successes += int(terminated)
+    rates = []
+    for deterministic in (True, False):
+        successes = 0
+        for ep in range(n_episodes):
+            obs, _ = env.reset()
+            terminated = truncated = False
+            while not (terminated or truncated):
+                action, _ = model.predict(obs, deterministic=deterministic)
+                obs, reward, terminated, truncated, info = env.step(action)
+            successes += int(terminated)
+        rates.append(successes / n_episodes)
     env.close()
-    return successes / n_episodes
+    return rates[0], rates[1]
 
 
 def main():
@@ -145,15 +154,17 @@ def main():
         model.save(ckpt)
         env.close()
 
-        sr = evaluate(model, grid, args.grid_size, args.seed,
-                       stage["max_goal_dist"], stage["max_steps"])
-        print(f"=== STAGE {stage['name']} DONE: success_rate={sr:.2%} (own difficulty) ===", flush=True)
-        results[stage["name"]] = sr
+        sr_det, sr_stoch = evaluate(model, grid, args.grid_size, args.seed,
+                                     stage["max_goal_dist"], stage["max_steps"])
+        print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
+              f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
+        results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
 
-    sr_final = evaluate(model, grid, args.grid_size, args.seed, None,
-                         STAGES[-1]["max_steps"], n_episodes=30)
-    print(f"=== FINAL full-random task success_rate={sr_final:.2%} ===", flush=True)
-    results["final_full_random"] = sr_final
+    sr_det, sr_stoch = evaluate(model, grid, args.grid_size, args.seed, None,
+                                 STAGES[-1]["max_steps"], n_episodes=30)
+    print(f"=== FINAL full-random task success_rate={sr_det:.2%} "
+          f"stochastic={sr_stoch:.2%} ===", flush=True)
+    results["final_full_random"] = {"deterministic": sr_det, "stochastic": sr_stoch}
     print(json.dumps(results, indent=2), flush=True)
 
 

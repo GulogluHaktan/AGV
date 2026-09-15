@@ -191,3 +191,27 @@ skorlarının artık eğitim-zamanı rolling skorlarına yakın çıkıp çıkma
   bir etkisi yok, sadece CPU'dan pay alıyor.
 - Depo/görsel iyileştirmeleri (tuğla duvar, palet-rafı, hedef işaretçisi) tamamen kozmetik,
   collision geometrisi/eğitim hızı etkilenmiyor — `worlds/gen_world.py` içinde.
+
+## 10. Devir sonrası güncelleme (2026-09-15, yeni makine)
+
+**Yeni ortam:** Proje yeni bir makineye (Ubuntu 22.04, RTX 4060 Laptop) devralındı. Docker ve
+şifresiz sudo yok; pipeline artık **native** çalışıyor: micromamba env `agv`
+(`~/micromamba/envs/agv`) — RoboStack'ten ROS2 Jazzy + Gazebo Harmonic 8.10
+(`-c robostack-jazzy -c conda-forge`), pip'ten torch cu130 + SB3 2.9. TurtleBot3 modelleri
+`models/` altına vendor'landı. Çalıştırma: `scripts/run_native.sh <arm> <algo> <out_prefix>`
+(Bölüm 4'teki docker komutunun karşılığı; GZ_IP/ROS_DOMAIN_ID/GZ_SIM_RESOURCE_PATH ayarlıyor).
+Not: İkinci bir izole sim örneği gerekirse (eğitim sürerken eval) `GZ_PARTITION` +
+farklı `ROS_DOMAIN_ID` kullan — `scripts/eval_diag.py` böyle koşuldu.
+
+**Bölüm 6.9'daki uçurumun teşhisi netleşti:** `sac_baseline_v2` yeni koşusunda s1 sonunda
+deterministik eval yine %5 çıktı (eğitim-zamanı ~%14-22). Aynı s1 checkpoint'i
+`eval_diag.py` ile iki modda değerlendirildi: **deterministic=True → %5,
+deterministic=False → %25**. Yani +20→+5 ödül düzeltmesi kritiği stabilize etti ama uçurumun
+asıl nedeni ödül ölçeği değilmiş: stokastik davranış (keşif gürültüsü dahil) hedefe ulaşıyor,
+politikanın ortalama aksiyonu ise henüz olgunlaşmamış (mean-action miscalibration).
+Sabit `ent_coef=0.02` entropiyi canlı tutarken ortalamanın keskinleşmesini geciktiriyor.
+Bu yüzden `curriculum_train.py::evaluate()` artık her stage sonunda **iki metriği birden**
+raporluyor (`success_rate=` deterministik, `stochastic=` stokastik; koşan sürece etkisi yok,
+sonraki koşularda devrede). Eğitim ilerledikçe deterministik metriğin stokastiğe yaklaşması
+beklenir; yaklaşmazsa ilk denenecek şey aşama-bazlı ent_coef düşürme (örn. s4-s5'te
+0.02→0.005).
