@@ -9,6 +9,29 @@ kullanılmıyor, bkz. `Resources/HANDOFF.md` §10.)
 
 ---
 
+## 0. Hızlı yol: install.sh
+
+Bölüm 1-3'ün tamamını tek komut yapar (depo + ROS2/Gazebo ortamı + Python paketleri),
+hepsini tek bir konuma kurar, sisteme hiçbir şey yazmaz, root istemez:
+
+```bash
+git clone git@github.com:GulogluHaktan/AGV.git /tmp/AGV && cd /tmp/AGV
+./install.sh                       # varsayilan: /media/noron/DISK02/agv
+./install.sh --root /baska/yol     # baska konum
+./install.sh --keep-repo           # depoyu tasima, sadece ortami kur
+```
+
+Betik ~25 GB boş alan ve GPU'yu kontrol eder, `micromamba` ikilisini `<root>/bin`'e,
+conda ortamını `<root>/micromamba`'ya, depoyu `<root>/AGV`'ye kurar. Sonunda
+`Simulations/gazebo_agv_nav/env.local.sh` yazar; `sim_up.sh` ve `run_native.sh` bunu
+okuyup ortamı nerede olursa olsun bulur (bu dosya makineye özeldir, git'e girmez).
+Yeniden çalıştırılabilir: var olan adımları atlar.
+
+Kurulum bittiğinde **Bölüm 5'teki üç kontrolü koşun**, sonra Bölüm 6 ile eğitime geçin.
+Aşağıdaki 1-4 numaralı bölümler elle kurmak ya da ne olduğunu görmek isterseniz diye.
+
+---
+
 ## 1. Depoyu al
 
 ```bash
@@ -78,8 +101,7 @@ yakaladı**. Her ortam/gözlem/ödül değişikliğinden sonra tekrar koşun.
 ```bash
 ./scripts/sim_up.sh 17
 
-export MAMBA_ROOT_PREFIX=~/micromamba
-eval "$(~/bin/micromamba shell hook --shell bash)" && micromamba activate agv
+. scripts/_activate.sh          # ortami aktive eder (env.local.sh'i okur)
 export GZ_IP=127.0.0.1 ROS_DOMAIN_ID=17 AGV_WORKSPACE=$PWD
 
 python3 scripts/gate_test.py          # ortam çözülebilir mi?

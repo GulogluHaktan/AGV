@@ -18,9 +18,8 @@ DOMAIN="${1:-17}"
 PARTITION="${2:-}"
 
 WS="$(cd "$(dirname "$0")/.." && pwd)"
-export MAMBA_ROOT_PREFIX="$HOME/micromamba"
-eval "$("$HOME/bin/micromamba" shell hook --shell bash)"
-micromamba activate agv
+# shellcheck source=scripts/_activate.sh
+. "$(dirname "$0")/_activate.sh"
 
 export GZ_IP=127.0.0.1
 export ROS_DOMAIN_ID="$DOMAIN"

@@ -26,9 +26,8 @@ WS="$(cd "$(dirname "$0")/.." && pwd)"
 cleanup() { "$WS/scripts/sim_down.sh" "$DOMAIN" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-export MAMBA_ROOT_PREFIX="$HOME/micromamba"
-eval "$("$HOME/bin/micromamba" shell hook --shell bash)"
-micromamba activate agv
+# shellcheck source=scripts/_activate.sh
+. "$(dirname "$0")/_activate.sh"
 
 export AGV_WORKSPACE="$WS"
 export GZ_IP=127.0.0.1                     # GZ Transport discovery fix
