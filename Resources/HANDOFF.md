@@ -398,5 +398,47 @@ goal_radius + pay ≈ 2.0 m) ki hiçbir episode önceden çözülmüş olmasın 
 monoton olsun; ızgarayı büyütmek (16 → 24/32) üst aşamaların ayrışması için gerekir.
 
 **Bu sampler'ı değiştirmek baseline'ın yeniden koşulmasını gerektirir** (kollar arası
-karşılaştırma ancak aynı sampler ile geçerli). `sac_baseline_v4` env düzeltmesini uçtan uca
-doğrulaması bakımından yine de değerli, bu yüzden tamamlanması bekleniyor.
+karşılaştırma ancak aynı sampler ile geçerli).
+
+### 14b. Düzeltildi (commit `688fe99`) — bant örneklemesi + 24×24 ızgara
+
+Karar: sampler şimdi düzeltildi, baseline yeniden koşuluyor. `sac_baseline_v4` s3'ün ortasında
+durduruldu (kalan aşamaları değiştirilen sampler'ı kullanacaktı, hiçbir şeyle
+karşılaştırılamazdı); s1 = %95/%95 ve s2 = %70/%90 sonuçları env düzeltmesini uçtan uca
+doğrulama işini zaten yapmıştı. Checkpoint'ler: `sac_baseline_v4_s1.zip`, `_s2.zip`.
+
+Yeni merdiven (`envs/curriculum.py` — aşama tablosu artık TEK yerde; eğitim ve kapı testinde
+ayrı ayrı durunca sapma riski vardı ve farklı mesafelerde koşan bir kapı testi hiçbir şey
+kanıtlamaz):
+
+| Aşama | Bant | Ölçülen ort. | Bütçe |
+|-------|------|--------------|-------|
+| s1 | 2-5 m | 3.32 m | 90 |
+| s2 | 5-9 m | 6.63 m | 180 |
+| s3 | 9-13 m | 10.68 m | 270 |
+| s4 | 13-18 m | 14.71 m | 380 |
+| s5 | 18+ m | 19.19 m | 600 |
+
+Kesin monoton, s5 gerçekten en zor, hedef yarıçapı içinde başlayan episode oranı **%0**.
+Izgara 16→24 (16×16'da kenar payıyla mesafe ~6 m'de tavan yapıyordu), engel 12→28 (kalabalık
+yoğunluğu sabit kalsın diye: önce 12/196 iç hücre, şimdi 28/484).
+
+### 14c. Kapı testi artık başarısızlık nedenini sınıflandırıyor
+
+Çıplak başarı oranı "ortam bozuk" ile "bu kontrolcü bu harita için fazla basit"i ayırt
+edemiyor, oysa ikisi zıt tepki gerektiriyor. Yeni sınıflar:
+
+- **wedged** — engele temas hâlinde durdu. Kontrolcünün tasarım gereği kaçınma mantığı yok;
+  RL politikası occupancy ızgarasını görüyor ve etrafından dolanabilir. Ortam hatası DEĞİL.
+- **no_progress** — hiçbir şeye temas etmeden neredeyse hiç mesafe kapatmadı. **Bozuk ortamın
+  imzası**; yaw eksikliği hatası tam olarak böyle görünüyordu. Buradaki herhangi bir ciddi
+  oran kapıyı geçirmez.
+- **budget** — gerçek ilerleme var, süre bitiminde hâlâ hareket hâlinde. `max_steps` dar.
+
+Yeni curriculum'da sonuç: success %80, wedged %20, **no_progress %0, budget %0**. Beş
+aşamanın tamamındaki her başarısızlık sıkışma; episode bazında doğrulandı (engel mesafesi
+0.44-0.51 m, son 25 adımda sıfır yer değiştirme). Yani ortam sağlam ve adım bütçeleri yeterli.
+
+**Şu an koşan:** `sac_baseline_v5` (baseline, SAC, bant curriculum, 24×24, 830k adım,
+~6-7 saat). Ardından: `eval_g3.py` ile G3 değerlendirmesi, sonra `--arm
+symmetric_augmentation` ve `--arm equivariant`.
