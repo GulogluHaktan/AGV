@@ -350,8 +350,53 @@ Yan gözlem: `sample_goal_near` kutu-örneklemesi ve 16×16 ızgara sınırı ne
 gerçek mesafe dağılımları birbirine çok yakın (s3 ort. 7.3 m, s4 5.9 m, s5 6.7 m) — yani
 curriculum merdiveni sanıldığı kadar ayrışmıyor. Eğitim koşusundan sonra gözden geçirilmeli.
 
-**SIRADAKİ KARAR (§12d madde 4) — kullanıcı onayı bekliyor:** harita hâlâ koşu başına tek ve
-sabit. Bunu episode başına değiştirmek makale için zorunlu (yoksa occupancy sabit girdi ve
-simetri karşılaştırması boş), ama hangi haritaların eğitim dağılımında olup hangilerinin G3
-genelleme testi için ayrı tutulacağı doğrudan makalenin iddiasını şekillendiren bir tasarım
-kararı. Bu karar verilmeden baseline koşusu başlatmak, sonradan yeniden koşmak anlamına gelir.
+**§12d madde 4-5 de tamamlandı (commit `81b91c0`):** onaylanan tasarım — eğitim episode başına
+24 kanonik yönelimli düzenden birini örnekliyor; D4 görüntüleri ve ayrık tohumlu yeni düzenler
+G3 için ayrı tutuluyor (`scripts/eval_g3.py`, commit `4ae06c5`). Reset, `obs_*` modellerini
+o haritanın hücrelerine ışınlayarak fiziği gözlemle uyumlu tutuyor. Ödüle yoğun engel-yakınlığı
+cezası eklendi (lidar eklenmedi: ajan engelleri zaten occupancy'den görüyor).
+
+Performans notları (hepsi ölçülmüş): teleport `gz service` subprocess'i 308 ms, köprülenmiş ROS
+servisi 0.25 ms; 14 teleport'u **eşzamanlı** göndermek 1-2'sini onaysız bırakıyor ve kayıp
+istek = kayıp teleport, yani harita gözlemden sessizce sapıyor → **sıralı gönderin**; raflar
+`<static>true</static>` kalmalı, dinamik yapıldıklarında teleport'un artık hızını koruyup
+episode ortasında haritada geziniyorlar. Net: reset 6676 ms → 21 ms.
+
+2. ve 3. kol kodu yeni gözleme taşındı ve grup etkisi doğrulandı (commit `5a818f5`):
+`goal_body` döndürmeler altında değişmez, aynalamada sol/sağ bileşeni işaret değiştirir;
+`heading` dünya-çerçevesi gibi dönüşür. `scripts/test_symmetry.py` bunu 200 rastgele durum ×
+8 grup elemanında (4808 kontrol) dünyayı bağımsızca dönüştürmekle karşılaştırarak sınıyor.
+
+## 14. Curriculum merdiveni zayıf: üst üç aşama aynı zorlukta (2026-09-16)
+
+`sample_goal_near` dağılımı 3000 örnekle ölçüldü (havuz: 24 harita, 16×16):
+
+| Aşama | max_dist | ort. mesafe | medyan | p90 | hedef yarıçapı içinde başlayan | gerekli adım / bütçe |
+|-------|----------|-------------|--------|-----|-------------------------------|----------------------|
+| s1 | 4 | 2.32 m | 2.24 | 3.61 | **%19.0** | 21 / 80 |
+| s2 | 8 | 4.30 m | 4.24 | 7.07 | %7.5 | 39 / 140 |
+| s3 | 12 | 5.81 m | 5.83 | 9.85 | %5.9 | 53 / 200 |
+| s4 | 16 | 6.74 m | 6.71 | 11.05 | %3.4 | 61 / 260 |
+| s5 | yok | 6.26 m | 6.32 | 10.20 | %3.2 | 57 / 320 |
+
+Üç sorun:
+
+1. **Merdiven üstte sıkışıyor.** s3/s4/s5 ortalamaları 5.8-6.7 m, yani fiilen aynı zorluk.
+   16×16 ızgara (kenar payıyla 12×12 kullanılabilir alan) mesafeyi doğal olarak sınırlıyor;
+   `max_dist` 12'nin üstüne çıkmak hiçbir şey değiştirmiyor. 5 aşamalı curriculum gerçekte
+   3 aşamalı (2.3 / 4.3 / ~6 m).
+2. **s5 "en zor" değil, s4'ten daha kolay** (6.26 < 6.74). Tam-rastgele örnekleme 12×12 kutuda
+   iki nokta arası ortalama ~6.3 m verir; s4'ün kutu-örneklemesi biraz daha uzağa düşüyor.
+   Makalenin manşet "final full-random başarı oranı" metriği dolayısıyla en zor koşul DEĞİL —
+   hakem bunu yakalar.
+3. **s1'de episode'ların %19'u hedef yarıçapının İÇİNDE başlıyor**, yani hiç hareket
+   gerektirmeyen bedava başarılar. s1'in %95'i bu kadarıyla şişmiş. Örnek-verimliliği iddiası
+   ("hedef başarı oranına ulaşmak için gereken episode sayısı") doğrudan bundan etkilenir.
+
+Öneri: hedef örneklemesini **bant** haline getirin (aşama başına [min, max] mesafe, min >
+goal_radius + pay ≈ 2.0 m) ki hiçbir episode önceden çözülmüş olmasın ve merdiven gerçekten
+monoton olsun; ızgarayı büyütmek (16 → 24/32) üst aşamaların ayrışması için gerekir.
+
+**Bu sampler'ı değiştirmek baseline'ın yeniden koşulmasını gerektirir** (kollar arası
+karşılaştırma ancak aynı sampler ile geçerli). `sac_baseline_v4` env düzeltmesini uçtan uca
+doğrulaması bakımından yine de değerli, bu yüzden tamamlanması bekleniyor.
