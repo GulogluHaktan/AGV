@@ -496,3 +496,44 @@ Düzeltmenin üç yolu var ve makalenin yöntem iddiasını farklı şekilde etk
 kararı erteledi. 3. kol kodu ŞU AN DÜZELTİLMEMİŞ durumda ve `scripts/test_equivariance.py`
 bilerek FAIL veriyor — bu, düzeltme yapılmadan 3. kolun koşulmaması gerektiğinin kalıcı
 hatırlatıcısı. `--arm equivariant` ile bir koşu başlatmadan önce bu karar verilmeli.
+
+## 16. İki ortam kazası ve alınan dersler (2026-09-16)
+
+### 16a. `sim_down.sh` eğitim simülasyonunu öldürdü
+
+`sim_down.sh` ilk hâlinde süreç-adı desenine göre *bütün* `gz sim` süreçlerini öldürüyordu.
+2. kolu izole bir örnekte (domain 42) test ettikten sonra temizlik için çağrıldığında,
+domain 17'deki **eğitim simülasyonunu da** kapattı — v5 o anda 170k adımdaydı.
+
+Belirti tam olarak `_wait_sim`'in durma korumasının bastığı uyarı oldu:
+`sim time only advanced 0.000s of 0.5s within 10.0s wall`. Yani koruma işini yaptı ve
+sessiz veri bozulmasını görünür kıldı; o koruma olmasa adımlar fiziksiz geçer ve hiçbir şey
+fark edilmezdi. Hasar 8 adımla sınırlı kaldı (170.447 içinde ihmal edilebilir).
+
+**Düzeltme:** `sim_up.sh` artık PID'leri domain başına bir dosyaya yazıyor
+(`$TMPDIR/agv_sim_<domain>.pids`), `sim_down.sh` yalnızca o dosyadaki PID'leri öldürüyor
+(`sim_down.sh <domain>` veya `--all`). `run_native.sh` de kendi içinde ayrı başlatma mantığı
+tutmak yerine `sim_up.sh`/`sim_down.sh` çağırıyor — iki kopya mantık zamanla sapıyordu.
+İzolasyon test edildi: domain 42 kapatılırken domain 17 ayakta kaldı.
+
+### 16b. escnn kurulumu numpy'i düşürdü, checkpoint'ler okunamaz oldu
+
+Eğitim sürerken `pip install escnn` yapıldı. escnn → `lie-learn` numpy<2 istediği için pip
+**numpy 2.5.3'ü sessizce 1.26.4'e düşürdü**. Sonuç: numpy 2.x altında kaydedilmiş her
+checkpoint okunamaz hâle geldi — SB3 cloudpickle ile açıyor ve numpy 1.26'da `numpy._core`
+yok, `ModuleNotFoundError: No module named 'numpy._core.numeric'`.
+
+v5'i s1 checkpoint'inden devam ettirme denemesi tam bu yüzden başarısız oldu.
+
+**Karar:** 3. kol escnn gerektiriyor, escnn numpy<2 gerektiriyor, dolayısıyla **üç kolun
+tamamı tek ve aynı numeric yığın altında koşmalı** — aşamaları farklı numpy sürümleri
+arasında bölmek bir makale için savunulamaz. Bu yüzden baseline sıfırdan yeniden başlatıldı
+(`sac_baseline_v6`). v3/v4/v5 checkpoint'leri artık açılamaz; zaten tarihçe.
+
+**Ders:** ortam bağımlılıklarını eğitim başlamadan ÖNCE kesinleştirin. Yığın artık
+`requirements-pip.txt` ile sabitlendi ve `ENVIRONMENT.md` kurulum sırasını + numpy<2 pinini
+açıklıyor. Yeni yığın altında kapı testi (%75 success + %25 wedged, no_progress %0) ve
+simetri testi (4808 kontrol) yeniden koşuldu ve geçti.
+
+**Şu an koşan:** `sac_baseline_v6` — baseline, SAC, bant curriculum, 24×24, 830k adım,
+18-21 fps, tahmini ~11 saat.

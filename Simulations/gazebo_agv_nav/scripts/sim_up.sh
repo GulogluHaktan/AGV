@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Start a headless Gazebo instance + ros_gz_bridge for this project and leave
-# them running in the background. Used by the standalone eval/gate-test scripts
-# (run_native.sh starts its own pair for training).
+# them running in the background.
 #
 # Usage: sim_up.sh [ros_domain_id] [gz_partition]
-#   Defaults to domain 17 / no partition (the training instance's settings).
+#   Defaults to domain 17 / no partition (what run_native.sh uses for training).
 #   Pass e.g. `sim_up.sh 42 evalpart` for a second, isolated instance that can
 #   run alongside a training job.
 #
-# NOTE: do not kill these with `pkill -f "gz sim"` from a shell whose own
-# command line contains that string -- pkill -f matches the caller too. Use
-# sim_down.sh.
+# The PIDs are recorded in a per-domain file so sim_down.sh can stop exactly
+# this instance. That matters: killing by process-name pattern cannot tell two
+# concurrent instances apart, and doing so once took down a training sim that
+# was mid-run while only the eval instance was meant to stop.
 # no -u: robostack's conda activate.d scripts reference unset vars
 set -eo pipefail
 
@@ -28,13 +28,27 @@ export GZ_SIM_RESOURCE_PATH="$WS/models"
 [ -n "$PARTITION" ] && export GZ_PARTITION="$PARTITION"
 
 LOGDIR="${TMPDIR:-/tmp}"
+PIDFILE="$LOGDIR/agv_sim_${DOMAIN}.pids"
 cd "$WS"
 
-gz sim -r -s -v1 "$WS/worlds/agv_nav.sdf" > "$LOGDIR/gz_${DOMAIN}.log" 2>&1 &
-echo "gz pid $!"
+if [ -f "$PIDFILE" ]; then
+  for pid in $(cat "$PIDFILE"); do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "instance for domain $DOMAIN already running (pid $pid); "\
+"stop it with sim_down.sh $DOMAIN" >&2
+      exit 1
+    fi
+  done
+  rm -f "$PIDFILE"
+fi
 
-# wait for the world to actually load before starting the bridge, so the
-# bridge's lazy topic discovery sees the model's publishers
+gz sim -r -s -v1 "$WS/worlds/agv_nav.sdf" > "$LOGDIR/gz_${DOMAIN}.log" 2>&1 &
+GZ_PID=$!
+echo "$GZ_PID" > "$PIDFILE"
+echo "gz pid $GZ_PID"
+
+# wait for the world to load before starting the bridge, so the bridge's lazy
+# topic discovery sees the model's publishers
 for _ in $(seq 1 60); do
   grep -q "Serving world controls" "$LOGDIR/gz_${DOMAIN}.log" && break
   grep -q "Failed to load" "$LOGDIR/gz_${DOMAIN}.log" && { echo "WORLD LOAD FAILED"; exit 1; }
@@ -43,6 +57,8 @@ done
 
 ros2 run ros_gz_bridge parameter_bridge --ros-args \
   -p config_file:="$WS/launch/bridge.yaml" > "$LOGDIR/bridge_${DOMAIN}.log" 2>&1 &
-echo "bridge pid $!"
+BRIDGE_PID=$!
+echo "$BRIDGE_PID" >> "$PIDFILE"
+echo "bridge pid $BRIDGE_PID"
 sleep 5
-echo "sim up (domain $DOMAIN${PARTITION:+, partition $PARTITION})"
+echo "sim up (domain $DOMAIN${PARTITION:+, partition $PARTITION}), pids in $PIDFILE"

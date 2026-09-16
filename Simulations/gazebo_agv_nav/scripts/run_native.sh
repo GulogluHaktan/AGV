@@ -3,39 +3,39 @@
 # Gazebo Harmonic from conda-forge). Mirrors the docker command in
 # Resources/HANDOFF.md section 4.
 #
-# Usage: run_native.sh <arm> <algo> <out_prefix>
-#   e.g. run_native.sh baseline sac sac_baseline_v2
-# no -u: robostack's conda activate.d scripts reference unset vars (CONDA_BUILD)
+# Usage: run_native.sh <arm> <algo> <out_prefix> [extra curriculum_train args...]
+#   e.g. run_native.sh baseline sac sac_baseline_v5
+#        run_native.sh baseline sac sac_baseline_v5 --resume_from sac_baseline_v5_s1.zip --start_stage 1
+#
+# The sim is started through sim_up.sh rather than inline, so its PIDs land in
+# the per-domain PID file and sim_down.sh can stop exactly this instance. That
+# also keeps one copy of the launch logic instead of two that can drift.
+# no -u: robostack's conda activate.d scripts reference unset vars
 set -eo pipefail
 
 ARM="${1:-baseline}"
 ALGO="${2:-sac}"
-PREFIX="${3:-sac_baseline_v2}"
+PREFIX="${3:-sac_baseline}"
+shift 3 2>/dev/null || true
 
+DOMAIN="${AGV_ROS_DOMAIN_ID:-17}"
 WS="$(cd "$(dirname "$0")/.." && pwd)"
+
+"$WS/scripts/sim_down.sh" "$DOMAIN" >/dev/null 2>&1 || true
+"$WS/scripts/sim_up.sh" "$DOMAIN"
+cleanup() { "$WS/scripts/sim_down.sh" "$DOMAIN" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
 export MAMBA_ROOT_PREFIX="$HOME/micromamba"
 eval "$("$HOME/bin/micromamba" shell hook --shell bash)"
 micromamba activate agv
 
 export AGV_WORKSPACE="$WS"
-export GZ_IP=127.0.0.1        # same discovery fix as in the Docker setup
-export ROS_DOMAIN_ID=17       # isolate from any other ROS graph on the host
+export GZ_IP=127.0.0.1                     # GZ Transport discovery fix
+export ROS_DOMAIN_ID="$DOMAIN"
 export GZ_SIM_RESOURCE_PATH="$WS/models"   # turtlebot3_common meshes
 cd "$WS"
 
-# gz sim: headless server only (-s), same flags as the docker launch file
-gz sim -r -s -v3 "$WS/worlds/agv_nav.sdf" > /tmp/claude-1000/gz.log 2>&1 &
-GZ_PID=$!
-sleep 5
-
-ros2 run ros_gz_bridge parameter_bridge --ros-args \
-  -p config_file:="$WS/launch/bridge.yaml" > /tmp/claude-1000/bridge.log 2>&1 &
-BRIDGE_PID=$!
-sleep 5
-
-cleanup() { kill "$GZ_PID" "$BRIDGE_PID" 2>/dev/null || true; }
-trap cleanup EXIT
-
 python3 scripts/curriculum_train.py --arm "$ARM" --algo "$ALGO" \
-  --out_prefix "$WS/$PREFIX" 2>&1 | tee "$WS/${PREFIX}.log"
+  --out_prefix "$WS/$PREFIX" "$@" 2>&1 | tee "$WS/${PREFIX}.log"
 echo DONE > "$WS/${PREFIX}.done"

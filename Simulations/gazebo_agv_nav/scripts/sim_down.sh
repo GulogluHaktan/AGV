@@ -1,44 +1,49 @@
 #!/usr/bin/env bash
-# Stop the Gazebo server and ros_gz_bridge started by sim_up.sh.
+# Stop the Gazebo instance started by sim_up.sh for one ROS domain.
 #
-# Exists because `pkill -f "gz sim"` also matches the command line of whatever
-# shell issued it (pkill -f sees whole cmdlines), so typing it inline kills the
-# caller. Matching from inside a script is not enough on its own either: a
-# caller whose own command line happens to mention "gz sim ..." still matches.
-# So this only kills processes that are NOT shells -- the real gz/bridge
-# processes -- and never touches itself or its ancestors.
+# Usage: sim_down.sh [ros_domain_id]      # default 17
+#        sim_down.sh --all                # every instance this project started
+#
+# Scoped by the PID file sim_up.sh writes, NOT by process-name pattern. Two
+# instances coexist by design (a training sim plus an isolated eval sim on
+# another domain/partition), and a pattern kill cannot tell them apart: doing
+# that once killed a training sim 170k steps into a run while only the eval
+# instance was meant to go down. Every step afterwards timed out with no
+# physics, which is silent data corruption rather than an obvious failure.
 set -eo pipefail
 
-is_shell() {
-  case "$(cat "/proc/$1/comm" 2>/dev/null)" in
-    bash|sh|dash|zsh|ksh) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+LOGDIR="${TMPDIR:-/tmp}"
 
-# collect this process and all of its ancestors, so we can never kill our own
-# invocation chain
-ancestors=" "
-p=$$
-while [ -n "$p" ] && [ "$p" != "0" ] && [ "$p" != "1" ]; do
-  ancestors="$ancestors$p "
-  p=$(awk '{print $4}' "/proc/$p/stat" 2>/dev/null || echo "")
-done
-
-kill_matching() {
-  local sig="$1" pat="$2" pid
-  for pid in $(pgrep -f "$pat" 2>/dev/null || true); do
-    case "$ancestors" in *" $pid "*) continue ;; esac
-    is_shell "$pid" && continue
-    kill "$sig" "$pid" 2>/dev/null || true
+stop_domain() {
+  local domain="$1"
+  local pidfile="$LOGDIR/agv_sim_${domain}.pids"
+  if [ ! -f "$pidfile" ]; then
+    echo "no pid file for domain $domain ($pidfile); nothing stopped"
+    return 0
+  fi
+  local pids
+  pids=$(cat "$pidfile")
+  for pid in $pids; do
+    kill "$pid" 2>/dev/null || true
   done
+  sleep 2
+  for pid in $pids; do
+    kill -9 "$pid" 2>/dev/null || true
+  done
+  rm -f "$pidfile"
+  echo "sim down (domain $domain)"
 }
 
-for pat in "gz sim" "parameter_bridge"; do
-  kill_matching -TERM "$pat"
-done
-sleep 2
-for pat in "gz sim" "parameter_bridge"; do
-  kill_matching -KILL "$pat"
-done
-echo "sim down"
+if [ "${1:-}" = "--all" ]; then
+  shopt -s nullglob
+  found=0
+  for pidfile in "$LOGDIR"/agv_sim_*.pids; do
+    domain="${pidfile##*/agv_sim_}"
+    stop_domain "${domain%.pids}"
+    found=1
+  done
+  [ "$found" = 0 ] && echo "no running instances recorded"
+  exit 0
+fi
+
+stop_domain "${1:-17}"
