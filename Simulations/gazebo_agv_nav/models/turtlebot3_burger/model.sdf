@@ -403,5 +403,18 @@
       <joint_name>wheel_right_joint</joint_name>
     </plugin>
 
+    <!-- Ground-truth world pose for the RL env. Wheel odometry (the DiffDrive
+         <odom_topic> above) does not register set_pose teleports and carries no
+         yaw the env can trust across resets, which forced a fragile
+         spawn-offset realignment. This publishes the model's actual world pose,
+         so the env reads (x, y, yaw) directly. -->
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_topic>gt_odom</odom_topic>
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <dimensions>2</dimensions>
+    </plugin>
+
   </model>
 </sdf>

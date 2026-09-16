@@ -1,11 +1,29 @@
 """Gymnasium env driving a TurtleBot3 in Gazebo (Harmonic) via ROS2 topics.
-Ground-truth grid/goal known (we generated the world), same reward contract
-as the lightweight prototype. Simplification for the first working pass:
-episodes are chained (goal resampled, robot pose NOT teleported between
-episodes) to avoid depending on a Gazebo set-pose service — still real
-physics, real learning signal.
+Ground-truth grid/goal known (we generated the world).
+
+Observation design (rewritten 2026-09-16, see HANDOFF §12): the action is a
+body-frame (linear_v, angular_v) command, so the policy MUST know where the
+goal is *relative to its own heading*. The earlier observation gave the goal
+offset in the world frame and never exposed yaw at all, which hid the state the
+action depends on; SAC correctly converged to a zero-mean, max-variance
+"hedge" policy and 780k steps of training produced nothing. Now:
+
+  goal_body  (2,) goal offset rotated into the robot frame -> directly actionable
+  heading    (2,) (cos yaw, sin yaw) -> relates the world-frame grid to the body
+  occupancy  (N,N) the map
+
+Under a D4 transform of the world this is a clean group action, which is what
+the paper's symmetry arms need: occupancy and heading transform (equivariant),
+goal_body is invariant (the robot rotates with the world).
+
+Pose comes from the model's ground-truth world pose (`/gt_odom`, published by
+the OdometryPublisher plugin added to the vendored burger model), not from
+wheel odometry: wheel odometry does not register set_pose teleports, which
+previously forced a spawn-offset realignment on every reset and left yaw
+untrustworthy.
 """
 from __future__ import annotations
+import math
 import subprocess
 import numpy as np
 import gymnasium as gym
@@ -28,13 +46,22 @@ GZ_BIN = _os.environ.get("GZ_BIN") or (
     else (_shutil.which("gz") or "gz"))
 
 
-def teleport(world: str, model: str, x: float, y: float, z: float = 0.05):
-    """Teleport a model via the gz-native set_pose service (not ROS-bridged)."""
+def teleport(world: str, model: str, x: float, y: float, z: float = 0.05,
+             yaw: float | None = None):
+    """Teleport a model via the gz-native set_pose service (not ROS-bridged).
+
+    yaw=None leaves orientation unset in the request, which Gazebo reads as the
+    identity rotation; pass a yaw to place the robot at a known heading (reset
+    randomizes it, so heading is a controlled variable rather than whatever the
+    previous episode happened to end on)."""
+    req = f'name: "{model}", position: {{x: {x}, y: {y}, z: {z}}}'
+    if yaw is not None:
+        req += (f', orientation: {{x: 0, y: 0, '
+                f'z: {math.sin(yaw / 2)}, w: {math.cos(yaw / 2)}}}')
     subprocess.run(
         [GZ_BIN, "service", "-s", f"/world/{world}/set_pose",
          "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
-         "--timeout", "2000",
-         "--req", f'name: "{model}", position: {{x: {x}, y: {y}, z: {z}}}'],
+         "--timeout", "2000", "--req", req],
         capture_output=True, timeout=5,
     )
 
@@ -63,13 +90,22 @@ class GazeboAGVEnv(gym.Env):
         # 0.5 sim-s @ 0.22 m/s max => 0.11 m/step ceiling: every curriculum
         # stage's (max_goal_dist, max_steps) pair is now actually feasible.
         self.control_dt = control_dt
+        # Action scaling. The burger's spec maximum angular rate is 2.84 rad/s,
+        # but a command is held for the whole control_dt, so at 2.84 one step
+        # rotates 1.42 rad (81 deg) -- coarser than any sane heading tolerance,
+        # and a scripted go-to-goal controller provably oscillates instead of
+        # ever driving (measured: 0 forward steps in 18, bearing swinging
+        # +105 -> -5 -> -55 deg). Capping at 1.0 rad/s gives 0.5 rad (29 deg)
+        # per step, which is controllable; linear stays at spec.
+        self.max_lin = 0.22
+        self.max_ang = 1.0
         self._rng = np.random.default_rng(seed)
-        self._raw_odom_xy = np.zeros(2, dtype=np.float32)
         self.last_odom_stamp = 0.0
 
         self.observation_space = spaces.Dict({
             "occupancy": spaces.Box(0, 1, shape=(grid_size, grid_size), dtype=np.uint8),
-            "goal_relative": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+            "goal_body": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+            "heading": spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
         })
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
@@ -77,12 +113,12 @@ class GazeboAGVEnv(gym.Env):
         self.node = Node("agv_rl_env")
         self.cmd_pub = self.node.create_publisher(TwistStamped, "/cmd_vel", 10)
         self._pose = np.array([grid_size / 2, grid_size / 2], dtype=np.float32)  # matches spawn pose
-        self.node.create_subscription(Odometry, "/odom", self._odom_cb, 10)
+        self._yaw = 0.0
+        self.node.create_subscription(Odometry, "/gt_odom", self._odom_cb, 10)
 
         self.goal = np.zeros(2, dtype=np.float32)
         self._step_count = 0
         self._prev_dist = 0.0
-        self._spawn_xy = self._pose.copy()
 
         # let ROS2/DDS discovery match this fresh publisher/subscriber with
         # the ros_gz_bridge before we start publishing — otherwise early
@@ -93,11 +129,11 @@ class GazeboAGVEnv(gym.Env):
             self._spin(1)
 
     def _odom_cb(self, msg: Odometry):
-        self._raw_odom_xy = np.array(
-            [msg.pose.pose.position.x, msg.pose.pose.position.y], dtype=np.float32)
-        self._pose = self._spawn_xy + self._raw_odom_xy
-        # sim-time of the last odom sample (gz sim time via the bridge);
-        # used to diagnose how much sim time actually elapses per env step
+        p, q = msg.pose.pose.position, msg.pose.pose.orientation
+        self._pose = np.array([p.x, p.y], dtype=np.float32)
+        self._yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                               1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        # sim-time of the last pose sample; _wait_sim() clocks env steps off it
         self.last_odom_stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
     def _spin(self, n=1):
@@ -129,15 +165,12 @@ class GazeboAGVEnv(gym.Env):
             self.goal = sample_goal_near(self.grid, start, self.max_goal_dist, self._rng).astype(np.float32)
         else:
             self.goal = sample_free_cell(self.grid, self._rng).astype(np.float32)
-        teleport(self.world, self.robot_name, float(start[0]), float(start[1]))
+        start_yaw = float(self._rng.uniform(-np.pi, np.pi))
+        teleport(self.world, self.robot_name, float(start[0]), float(start[1]),
+                 yaw=start_yaw)
         teleport(self.world, "goal_marker", float(self.goal[0]), float(self.goal[1]), z=0.15)
-        # let the sim advance past the teleport and a fresh /odom arrive
+        # let the sim advance past the teleport so /gt_odom reports the new pose
         self._wait_sim(0.1)
-
-        # realign our spawn offset so _pose == start immediately after teleport,
-        # regardless of what the raw odom accumulator itself reads
-        self._spawn_xy = start - self._raw_odom_xy
-        self._pose = start.copy()
 
         self._step_count = 0
         self._prev_dist = float(np.linalg.norm(self._pose - self.goal))
@@ -147,8 +180,8 @@ class GazeboAGVEnv(gym.Env):
         linear_v, angular_v = np.clip(action, -1.0, 1.0)
         msg = TwistStamped()
         msg.header.stamp = self.node.get_clock().now().to_msg()
-        msg.twist.linear.x = float(linear_v) * 0.22
-        msg.twist.angular.z = float(angular_v) * 2.84
+        msg.twist.linear.x = float(linear_v) * self.max_lin
+        msg.twist.angular.z = float(angular_v) * self.max_ang
         self.cmd_pub.publish(msg)
         self._wait_sim(self.control_dt)
 
@@ -175,8 +208,17 @@ class GazeboAGVEnv(gym.Env):
         return self._obs(), reward, reached, truncated, {"dist_to_goal": dist_to_goal}
 
     def _obs(self):
-        goal_relative = ((self.goal - self._pose) / self.grid_size).astype(np.float32)
-        return {"occupancy": self.grid.copy(), "goal_relative": goal_relative}
+        # goal offset rotated into the robot frame: +x is straight ahead, +y is
+        # to its left, so the policy can read off "turn left / drive forward"
+        # without having to infer its own heading from anything else
+        d = (self.goal - self._pose) / self.grid_size
+        c, s = math.cos(self._yaw), math.sin(self._yaw)
+        goal_body = np.array([c * d[0] + s * d[1],
+                              -s * d[0] + c * d[1]], dtype=np.float32)
+        heading = np.array([c, s], dtype=np.float32)
+        return {"occupancy": self.grid.copy(),
+                "goal_body": goal_body,
+                "heading": heading}
 
     def close(self):
         self.node.destroy_node()
