@@ -473,15 +473,26 @@ Düzeltmenin üç yolu var ve makalenin yöntem iddiasını farklı şekilde etk
   (ölçüldü: 0.0000), tek satırlık değişiklik. Ama özellik vektörü "ortalama kalabalık" gibi
   küresel bir özete dönüşür, uzamsal yerleşim tamamen kaybolur — politika haritayı engelden
   kaçınmak için kullanamaz. Occupancy girdisinin faydası büyük ölçüde gider.
-- **(B) Ego-merkezli occupancy ızgarası.** Izgarayı politikaya vermeden robot çerçevesine
-  döndür. Dünya D4 dönüşümü ego-merkezli ızgarayı değiştirmez, yani değişmezlik kendiliğinden
-  gelir VE uzamsal yerleşim gövde çerçevesinde korunur ("solumdaki engel" solda kalır).
-  Navigasyon RL'inde standart yaklaşım. Uyarısı: ızgara zaten ego-merkezliyse düz bir CNN de
-  değişmez olurdu, dolayısıyla 3. kolun 1. kola karşı avantajı "değişmezlik"ten
-  "yönelimler arası ağırlık paylaşımı sayesinde örnek verimliliği"ne kayar — makalede bu
-  gerekçeyi yeniden kurmak gerekir.
+- **(B) Ego-merkezli occupancy ızgarası — ELENDİ, kullanmayın.** Izgarayı robot çerçevesine
+  döndürmek değişmezliği bedava verir ve uzamsal yerleşimi korur, bu yüzden ilk bakışta en
+  cazip seçenekti. Ama sayısal olarak sınandı ve **G3'ü üç kol için birden anlamsız kılıyor:**
+  ego(harita, poz, yaw) ile ego(rot90·harita, karşılık gelen poz/yaw) 300 örnekte **%100
+  bit düzeyinde aynı** çıkıyor. Başlangıç poz/yaw'ı düzgün örneklendiği için döndürülmüş bir
+  haritadaki gözlem DAĞILIMI orijinaliyle özdeş; yani baseline dahil her kol rotasyon
+  genellemesini kendiliğinden çözer ve RQ34 ölçülemez hale gelir.
+
+  Genel ders: **yapısal rotasyon-değişmezliği veren her temsil, o kol için G3 rotasyon
+  testini kendiliğinden çözer.** 3. kol için bu zaten amaçlanan sonuç (beklenen-sonuçlar
+  tablosu "yapısal garanti" diyor); test anlamlı kalıyor çünkü 1. ve 2. kollar dünya-çerçevesi
+  ızgarayı bu garanti olmadan kullanıyor. Dolayısıyla **ızgara dünya çerçevesinde kalmalı**
+  ve düzeltme 3. kolun içinde yapılmalı.
 - **(C) Uçtan uca eşdeğişken politika.** Uzamsal haritayı aksiyon başlığına kadar eşdeğişken
   taşı; aksiyon dağılımı da dönüşsün (aynalamada açısal hız işaret değiştirir). Makalenin
   "E(2)-steerable politika ağı" ifadesine en sadık seçenek ve en güçlü katkı, ama SB3'ün
   politika başlıkları bunu desteklemiyor, özel başlık yazmak gerekir (Bölüm 8.4'te bu
   bilinçli olarak kapsam dışı bırakılmıştı).
+
+**Karar durumu (2026-09-16):** (A) ile (C) arasındaki seçim kullanıcıya soruldu, kullanıcı
+kararı erteledi. 3. kol kodu ŞU AN DÜZELTİLMEMİŞ durumda ve `scripts/test_equivariance.py`
+bilerek FAIL veriyor — bu, düzeltme yapılmadan 3. kolun koşulmaması gerektiğinin kalıcı
+hatırlatıcısı. `--arm equivariant` ile bir koşu başlatmadan önce bu karar verilmeli.
