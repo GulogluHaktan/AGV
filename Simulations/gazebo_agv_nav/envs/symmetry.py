@@ -73,6 +73,55 @@ def transform_point(xy: np.ndarray, g: D4, grid_size: int) -> np.ndarray:
     return np.array([x, y])
 
 
+MIRRORED = (D4.MIRROR_X, D4.MIRROR_X_ROT90, D4.MIRROR_X_ROT180, D4.MIRROR_X_ROT270)
+
+_ROT_K = {
+    D4.IDENTITY: 0, D4.MIRROR_X: 0,
+    D4.ROT90: 1, D4.MIRROR_X_ROT90: 1,
+    D4.ROT180: 2, D4.MIRROR_X_ROT180: 2,
+    D4.ROT270: 3, D4.MIRROR_X_ROT270: 3,
+}
+
+
+def is_mirrored(g: D4) -> bool:
+    """Whether g reverses orientation (carries the mirror factor)."""
+    return g in MIRRORED
+
+
+def transform_direction(v: np.ndarray, g: D4) -> np.ndarray:
+    """Apply a D4 element to a direction vector (heading, velocity, ...).
+
+    This is the linear part of `transform_point`: the same map with the
+    grid-size translation dropped, so mirroring negates x and each rotation
+    sends (dx, dy) to (dy, -dx). Directions need their own entry point because
+    routing them through `transform_point` would add the grid offset and yield
+    a position rather than a direction."""
+    dx, dy = float(v[0]), float(v[1])
+    if is_mirrored(g):
+        dx = -dx
+    for _ in range(_ROT_K[g]):
+        dx, dy = dy, -dx
+    return np.array([dx, dy], dtype=np.float32)
+
+
+def transform_goal_body(goal_body: np.ndarray, g: D4) -> np.ndarray:
+    """Apply a D4 element to a body-frame goal offset (forward, left).
+
+    Body-frame quantities do not behave like world-frame ones: under a world
+    *rotation* the robot turns with the world, so the goal's bearing relative
+    to the robot is unchanged and this is the identity. Only a *mirror*
+    matters, and it flips the left/right component -- the same reason
+    `transform_action` only has to negate angular velocity.
+
+    Derivation: goal_body = R(-yaw)(goal - pose). For a mirror F,
+    heading' = F heading gives yaw' = pi - yaw, and
+    R(-yaw')F = diag(1, -1) R(-yaw)."""
+    out = np.asarray(goal_body, dtype=np.float32).copy()
+    if is_mirrored(g):
+        out[1] = -out[1]
+    return out
+
+
 def transform_action(action: np.ndarray, g: D4) -> np.ndarray:
     """Apply a D4 element to a differential-drive action [linear_v, angular_v].
 
@@ -81,8 +130,7 @@ def transform_action(action: np.ndarray, g: D4) -> np.ndarray:
     component matters here.
     """
     linear_v, angular_v = action
-    mirrored = g in (D4.MIRROR_X, D4.MIRROR_X_ROT90, D4.MIRROR_X_ROT180, D4.MIRROR_X_ROT270)
-    return np.array([linear_v, -angular_v if mirrored else angular_v])
+    return np.array([linear_v, -angular_v if is_mirrored(g) else angular_v])
 
 
 @dataclass

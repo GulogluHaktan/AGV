@@ -21,7 +21,8 @@ from __future__ import annotations
 import numpy as np
 import gymnasium as gym
 
-from envs.symmetry import D4, ALL_D4, transform_grid, transform_point, transform_action
+from envs.symmetry import (D4, ALL_D4, transform_grid, transform_action,
+                           transform_direction, transform_goal_body)
 
 
 class SymmetricAugmentationWrapper(gym.Wrapper):
@@ -42,7 +43,13 @@ class SymmetricAugmentationWrapper(gym.Wrapper):
         return self._transform_obs(obs), reward, terminated, truncated, info
 
     def _transform_obs(self, obs: dict) -> dict:
-        grid_size = obs["occupancy"].shape[0]
-        occupancy = transform_grid(obs["occupancy"], self._g)
-        goal_relative = transform_point(obs["goal_relative"] + grid_size / 2, self._g, grid_size) - grid_size / 2
-        return {"occupancy": occupancy, "goal_relative": goal_relative.astype(np.float32)}
+        # Observation is {occupancy, goal_body, heading} (see gazebo_agv_env);
+        # each piece has its own group action. occupancy and heading live in
+        # the world frame and transform; goal_body lives in the robot frame and
+        # only a mirror touches it. `scripts/test_symmetry.py` checks this
+        # against recomputing the observation from a transformed world state.
+        return {
+            "occupancy": transform_grid(obs["occupancy"], self._g),
+            "goal_body": transform_goal_body(obs["goal_body"], self._g),
+            "heading": transform_direction(obs["heading"], self._g),
+        }

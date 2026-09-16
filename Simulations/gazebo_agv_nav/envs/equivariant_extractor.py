@@ -6,7 +6,7 @@ under the same symmetry assumption.
 The occupancy-grid observation goes through a D4-equivariant CNN stack
 (R2Conv layers over regular-representation fields) and is pooled down to a
 D4-*invariant* feature vector via GroupPooling. That invariant vector is
-concatenated with the raw goal_relative vector and fed to SB3's normal MLP
+concatenated with the raw goal_body/heading vectors and fed to SB3's normal MLP
 head. Pooling to invariant (rather than carrying a steerable/regular output
 all the way to the action heads) is a deliberate scope cut: full end-to-end
 action-equivariance would also require the action distribution itself to
@@ -75,18 +75,25 @@ class D4EquivariantGridEncoder(nn.Module):
 
 class D4EquivariantExtractor(BaseFeaturesExtractor):
     """Combined extractor for the Dict obs space: D4-equivariant CNN on
-    'occupancy', tiny MLP on 'goal_relative', concatenated -- drop-in
-    replacement for SB3's default CombinedExtractor via policy_kwargs."""
+    'occupancy', tiny MLP on the vector inputs, concatenated -- drop-in
+    replacement for SB3's default CombinedExtractor via policy_kwargs.
+
+    The vector part is 'goal_body' (the goal offset in the robot frame) plus
+    'heading' (cos yaw, sin yaw). It replaced a single world-frame
+    'goal_relative' input when the observation was reworked to actually contain
+    the state the action depends on -- see HANDOFF §12."""
+
+    VECTOR_KEYS = ("goal_body", "heading")
 
     def __init__(self, observation_space: gym.spaces.Dict, grid_feat_dim: int = 64):
-        goal_dim = observation_space["goal_relative"].shape[0]
+        vec_dim = sum(observation_space[k].shape[0] for k in self.VECTOR_KEYS)
         super().__init__(observation_space, features_dim=grid_feat_dim + 32)
         grid_size = observation_space["occupancy"].shape[0]
         self.grid_encoder = D4EquivariantGridEncoder(grid_size, out_dim=grid_feat_dim)
-        self.goal_mlp = nn.Sequential(nn.Linear(goal_dim, 32), nn.ReLU())
+        self.vec_mlp = nn.Sequential(nn.Linear(vec_dim, 32), nn.ReLU())
 
     def forward(self, observations: dict) -> torch.Tensor:
         occ = observations["occupancy"].float().unsqueeze(1)  # (B,1,H,W)
         grid_feat = self.grid_encoder(occ)
-        goal_feat = self.goal_mlp(observations["goal_relative"].float())
-        return torch.cat([grid_feat, goal_feat], dim=1)
+        vec = torch.cat([observations[k].float() for k in self.VECTOR_KEYS], dim=1)
+        return torch.cat([grid_feat, self.vec_mlp(vec)], dim=1)
