@@ -44,7 +44,11 @@ class SuccessRateCallback(BaseCallback):
                 self.actions.append((float(a[0]), float(a[1])))
         if self.recent and self.num_timesteps % self.log_every == 0:
             rate = sum(self.recent) / len(self.recent)
-            print(f"[success-rate] last {len(self.recent)} episodes: "
+            # timestep on the line so learning curves read straight out of the
+            # log; without it a parser has to bracket each line between the
+            # surrounding rollout blocks to recover x
+            print(f"[success-rate] t={self.num_timesteps} "
+                  f"last {len(self.recent)} episodes: "
                   f"{rate:.1%} reached goal", flush=True)
             if self.actions:
                 arr = np.array(self.actions)
