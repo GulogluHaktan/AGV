@@ -51,6 +51,46 @@ def asymmetric_corridor(size: int = 32, seed: int | None = None,
     return grid
 
 
+def make_map_pool(size: int = 16, n_maps: int = 24, seed: int = 0,
+                   n_obstacle_pairs: int = 6) -> list[np.ndarray]:
+    """A pool of canonical-orientation training layouts.
+
+    `symmetric_corridor` places every obstacle together with its left-right
+    twin, so each layout is already mirror-symmetric about the vertical axis.
+    That fixes the "canonical orientation" the paper trains on; the held-out
+    generalization sets come from rotating/flipping these (see `d4_orbit`).
+
+    Every map has the same obstacle count so the physical obstacle pool in the
+    Gazebo world is fully used on every episode and difficulty stays uniform.
+    """
+    rng = np.random.default_rng(seed)
+    return [symmetric_corridor(size=size, n_obstacle_pairs=n_obstacle_pairs, rng=rng)
+            for _ in range(n_maps)]
+
+
+def d4_orbit(grid: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    """Distinct D4 images of `grid`, excluding the grid itself.
+
+    Note the degeneracy this exists to handle: layouts from
+    `symmetric_corridor` are invariant under the left-right mirror, so that
+    element of D4 maps a training map to *itself* and is useless as a
+    generalization test. Rotations and the top-bottom mirror are the elements
+    that actually produce unseen layouts, and this returns only those.
+    """
+    from envs.symmetry import ALL_D4, D4, transform_grid  # local: avoid cycle
+    seen = [grid]
+    out: list[tuple[str, np.ndarray]] = []
+    for g in ALL_D4:
+        if g is D4.IDENTITY:
+            continue
+        t = transform_grid(grid, g)
+        if any(np.array_equal(t, s) for s in seen):
+            continue
+        seen.append(t)
+        out.append((g.value, t))
+    return out
+
+
 def sample_free_cell(grid: np.ndarray, rng: np.random.Generator, margin: int = 2) -> np.ndarray:
     size = grid.shape[0]
     while True:

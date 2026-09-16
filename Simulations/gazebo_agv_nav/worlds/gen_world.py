@@ -73,6 +73,16 @@ RACK_LINK = """
         {boxes}
       </link>
 """
+# Racks stay STATIC even though the env teleports them every episode. Static
+# was briefly suspected of making set_pose slow (~555 ms/model) and they were
+# made dynamic, but that measurement was an artifact of firing the teleports
+# concurrently, which made 1-2 of them time out; sequential set_pose costs
+# ~0.25 ms per model whether static or not. Dynamic racks were actively wrong:
+# a teleport imparts residual velocity, and with gravity disabled and no
+# damping they drifted across the map for the rest of the episode (observed
+# obstacles wandering two cells), so the physics stopped matching the
+# occupancy grid the policy was given.
+RACK_INERTIAL = ""
 _POST = """
         <visual name="post_{n}">
           <pose>{px} {py} 0 0 0 0</pose>
@@ -110,7 +120,8 @@ BOX_TEMPLATE = ("""
     <model name="obs_{i}">
       <static>true</static>
       <pose>{x} {y} 0.9 0 0 0</pose>""" + RACK_LINK.format(
-    posts=_posts_xml, planks=_planks_xml, boxes=_boxes_xml) + """
+    posts=_posts_xml, planks=_planks_xml,
+    boxes=_boxes_xml + RACK_INERTIAL) + """
     </model>
 """)
 
@@ -181,15 +192,24 @@ def main():
     model_uri = os.environ.get("TB3_MODEL_URI", default_uri)
     sdf = SDF_HEADER.format(spawn_x=spawn_x, spawn_y=spawn_y, model_uri=model_uri)
     size = args.grid_size
-    i = 0
+    # Separate counters: obstacle models must be named obs_0..obs_{N-1}
+    # contiguously, because the env teleports them by name every reset to
+    # realize that episode's map. They used to share one counter with the
+    # walls, which scattered the names (obs_21, obs_22, ...) and made them
+    # impossible to address predictably.
+    n_walls = n_obs = 0
     for y in range(size):
         for x in range(size):
             if not grid[y, x]:
                 continue
             is_border = x == 0 or x == size - 1 or y == 0 or y == size - 1
-            tmpl = WALL_TEMPLATE if is_border else BOX_TEMPLATE
-            sdf += tmpl.format(i=i, x=x, y=y)
-            i += 1
+            if is_border:
+                sdf += WALL_TEMPLATE.format(i=n_walls, x=x, y=y)
+                n_walls += 1
+            else:
+                sdf += BOX_TEMPLATE.format(i=n_obs, x=x, y=y)
+                n_obs += 1
+    i = n_walls + n_obs
 
     # Two floor lane stripes crossing through the middle of the map -- cheap
     # visual detail, no effect on collision/occupancy.
@@ -201,7 +221,8 @@ def main():
 
     with open(args.out, "w") as f:
         f.write(sdf)
-    print(f"Wrote {args.out} with {i} obstacles ({args.map_type}, seed={args.seed})")
+    print(f"Wrote {args.out}: {n_walls} wall cells + {n_obs} movable obstacles "
+          f"(obs_0..obs_{n_obs - 1}) ({args.map_type}, seed={args.seed})")
 
 
 if __name__ == "__main__":

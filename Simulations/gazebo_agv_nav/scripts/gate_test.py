@@ -21,7 +21,7 @@ import os, sys, argparse, math
 sys.path.insert(0, os.environ.get("AGV_WORKSPACE",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import numpy as np
-from envs.map_generator import symmetric_corridor
+from envs.map_generator import make_map_pool
 from envs.gazebo_agv_env import GazeboAGVEnv
 
 # same ladder as scripts/curriculum_train.py STAGES
@@ -55,8 +55,8 @@ def scripted_action(obs, max_ang, control_dt, drive_cone=math.radians(60)):
     return np.array([lin, ang], dtype=np.float32)
 
 
-def run_stage(stage, grid, grid_size, seed, n_episodes):
-    env = GazeboAGVEnv(grid=grid, grid_size=grid_size, seed=seed,
+def run_stage(stage, pool, grid_size, seed, n_episodes):
+    env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                        max_goal_dist=stage["max_goal_dist"],
                        max_steps=stage["max_steps"])
     successes, lens, final_dists, start_dists = 0, [], [], []
@@ -85,19 +85,20 @@ def main():
     ap.add_argument("--n_episodes", type=int, default=10)
     ap.add_argument("--grid_size", type=int, default=16)
     ap.add_argument("--seed", type=int, default=3)
+    ap.add_argument("--n_maps", type=int, default=8,
+                    help="size of the map pool the env samples per episode")
     args = ap.parse_args()
 
-    grid = symmetric_corridor(size=args.grid_size,
-                              rng=np.random.default_rng(args.seed))
+    pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps, seed=args.seed)
     stages = [s for s in STAGES if args.stage in (None, s["name"])]
     if not stages:
         sys.exit(f"unknown stage {args.stage!r}")
 
     print(f"scripted-controller gate test, {args.n_episodes} episodes/stage, "
-          f"pass mark {PASS_THRESHOLD:.0%}\n", flush=True)
+          f"{len(pool)} maps in pool, pass mark {PASS_THRESHOLD:.0%}\n", flush=True)
     results = {}
     for stage in stages:
-        r = run_stage(stage, grid, args.grid_size, args.seed, args.n_episodes)
+        r = run_stage(stage, pool, args.grid_size, args.seed, args.n_episodes)
         results[stage["name"]] = r
         verdict = "PASS" if r["sr"] >= PASS_THRESHOLD else "FAIL"
         print(f"[{verdict}] {stage['name']}: success={r['sr']:.0%} "

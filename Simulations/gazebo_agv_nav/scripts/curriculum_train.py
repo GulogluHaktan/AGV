@@ -14,7 +14,7 @@ sys.path.insert(0, os.environ.get("AGV_WORKSPACE",
 import numpy as np
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback
-from envs.map_generator import symmetric_corridor
+from envs.map_generator import make_map_pool
 from envs.gazebo_agv_env import GazeboAGVEnv
 from envs.wrappers import SymmetricAugmentationWrapper
 
@@ -63,22 +63,22 @@ STAGES = [
 ]
 
 
-def make_env(grid, grid_size, seed, max_goal_dist, max_steps, arm):
-    env = GazeboAGVEnv(grid=grid, grid_size=grid_size, seed=seed,
+def make_env(pool, grid_size, seed, max_goal_dist, max_steps, arm):
+    env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                         max_goal_dist=max_goal_dist, max_steps=max_steps)
     if arm == "symmetric_augmentation":
         env = SymmetricAugmentationWrapper(env, seed=seed)
     return env
 
 
-def evaluate(model, grid, grid_size, seed, max_goal_dist, max_steps, n_episodes=20):
+def evaluate(model, pool, grid_size, seed, max_goal_dist, max_steps, n_episodes=20):
     """Returns (deterministic_sr, stochastic_sr). Both are reported because the
     deterministic mean action lags well behind the stochastic behavior early in
     training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
     train-vs-eval gap of HANDOFF §6.9 is mean-action miscalibration, not a
     metric artifact), and the stochastic number is the one comparable to the
     train-time rolling success rate."""
-    env = GazeboAGVEnv(grid=grid, grid_size=grid_size, seed=seed,
+    env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                         max_goal_dist=max_goal_dist, max_steps=max_steps)
     rates = []
     for deterministic in (True, False):
@@ -101,14 +101,21 @@ def main():
     ap.add_argument("--algo", choices=["ppo", "sac"], default="sac")
     ap.add_argument("--grid_size", type=int, default=16)
     ap.add_argument("--seed", type=int, default=3)
+    ap.add_argument("--n_maps", type=int, default=24,
+                    help="canonical-orientation training layouts; the env samples "
+                         "one per episode. A single fixed map makes the occupancy "
+                         "observation a constant, which is exactly the input both "
+                         "symmetry arms operate on -- see HANDOFF 12b.")
     ap.add_argument("--resume_from", default=None)
     ap.add_argument("--out_prefix", default="/workspace/curr2")
     ap.add_argument("--start_stage", type=int, default=0)
     args = ap.parse_args()
     Algo = SAC if args.algo == "sac" else PPO
 
-    rng = np.random.default_rng(args.seed)
-    grid = symmetric_corridor(size=args.grid_size, rng=rng)
+    # Training distribution: canonical-orientation layouts only. The D4
+    # images of these, plus fresh unseen layouts, are held back for the G3
+    # generalization evaluation and must never be sampled here.
+    pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps, seed=args.seed)
 
     ckpt = args.resume_from
     results = {}
@@ -118,7 +125,7 @@ def main():
             continue
         print(f"=== STAGE {stage['name']}: dist<={stage['max_goal_dist']} "
               f"steps={stage['max_steps']} timesteps={stage['timesteps']} ===", flush=True)
-        env = make_env(grid, args.grid_size, args.seed, stage["max_goal_dist"],
+        env = make_env(pool, args.grid_size, args.seed, stage["max_goal_dist"],
                         stage["max_steps"], args.arm)
         policy_kwargs = {}
         if args.arm == "equivariant":
@@ -154,13 +161,13 @@ def main():
         model.save(ckpt)
         env.close()
 
-        sr_det, sr_stoch = evaluate(model, grid, args.grid_size, args.seed,
+        sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
                                      stage["max_goal_dist"], stage["max_steps"])
         print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
               f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
         results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
 
-    sr_det, sr_stoch = evaluate(model, grid, args.grid_size, args.seed, None,
+    sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed, None,
                                  STAGES[-1]["max_steps"], n_episodes=30)
     print(f"=== FINAL full-random task success_rate={sr_det:.2%} "
           f"stochastic={sr_stoch:.2%} ===", flush=True)

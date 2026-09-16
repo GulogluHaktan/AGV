@@ -33,8 +33,11 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
+from ros_gz_interfaces.srv import SetEntityPose
 
 from envs.map_generator import sample_free_cell, sample_goal_near
+
+_ENTITY_MODEL = 2  # ros_gz_interfaces/Entity.MODEL
 
 import os as _os
 import shutil as _shutil
@@ -70,9 +73,19 @@ class GazeboAGVEnv(gym.Env):
     def __init__(self, grid, grid_size: int, max_steps: int = 120,
                  goal_radius: float = 1.2, seed: int | None = None,
                  world: str = "agv_nav", robot_name: str = "burger",
-                 max_goal_dist: float | None = None, control_dt: float = 0.5):
+                 max_goal_dist: float | None = None, control_dt: float = 0.5,
+                 collision_coef: float = 0.05, safe_dist: float = 1.0,
+                 n_obstacle_slots: int = 12):
         super().__init__()
-        self.grid = grid
+        # `grid` may be a single occupancy grid or a pool of them. With a pool,
+        # reset() picks one and physically rebuilds it in Gazebo by teleporting
+        # the obs_* models, so the observation and the physics agree. A pool is
+        # what the paper needs: with one fixed map the occupancy input is a
+        # constant, and both the augmentation and equivariant arms operate on
+        # exactly that input, so there would be nothing for symmetry to act on.
+        self.grids = ([np.asarray(grid)] if isinstance(grid, np.ndarray)
+                      else [np.asarray(g) for g in grid])
+        self.grid = self.grids[0]
         self.grid_size = grid_size
         self.max_steps = max_steps
         self.goal_radius = goal_radius
@@ -99,8 +112,20 @@ class GazeboAGVEnv(gym.Env):
         # per step, which is controllable; linear stays at spec.
         self.max_lin = 0.22
         self.max_ang = 1.0
+        # Dense obstacle-proximity penalty. There was no collision term at all
+        # before, so nothing in the reward discouraged driving into the racks.
+        # Scaled to sit alongside the -0.01/step time cost rather than dominate
+        # the progress term (max |progress| per step is ~0.11).
+        self.collision_coef = collision_coef
+        self.safe_dist = safe_dist
+        # how many obs_* models the loaded world provides
+        self.n_obstacle_slots = n_obstacle_slots
         self._rng = np.random.default_rng(seed)
         self.last_odom_stamp = 0.0
+        # interior obstacle cells of the active map, in world coords, for the
+        # proximity penalty (walls excluded: the border is identical in every
+        # map and is already handled by the robot simply being unable to pass)
+        self._obstacles = np.zeros((0, 2), dtype=np.float32)
 
         self.observation_space = spaces.Dict({
             "occupancy": spaces.Box(0, 1, shape=(grid_size, grid_size), dtype=np.uint8),
@@ -112,6 +137,12 @@ class GazeboAGVEnv(gym.Env):
         rclpy.init(args=None)
         self.node = Node("agv_rl_env")
         self.cmd_pub = self.node.create_publisher(TwistStamped, "/cmd_vel", 10)
+        # set_pose via the bridged ROS service, not `gz service` subprocesses:
+        # measured 7.9 ms vs 308 ms per call. At 14 teleports per reset (robot,
+        # goal marker, 12 obstacles) the subprocess route would cost 4.3 s of
+        # every reset and make per-episode maps unaffordable.
+        self.pose_cli = self.node.create_client(
+            SetEntityPose, f"/world/{world}/set_pose")
         self._pose = np.array([grid_size / 2, grid_size / 2], dtype=np.float32)  # matches spawn pose
         self._yaw = 0.0
         self.node.create_subscription(Odometry, "/gt_odom", self._odom_cb, 10)
@@ -127,6 +158,65 @@ class GazeboAGVEnv(gym.Env):
         t0 = _time.time()
         while _time.time() - t0 < 2.0:
             self._spin(1)
+        if not self.pose_cli.wait_for_service(timeout_sec=10.0):
+            raise RuntimeError(
+                f"/world/{world}/set_pose service not available — is the "
+                "ros_gz_bridge running with the set_pose service entry in "
+                "launch/bridge.yaml?")
+
+    def _set_pose(self, name: str, x: float, y: float, z: float,
+                  yaw: float | None = None, timeout: float = 2.0) -> bool:
+        """Teleport a model through the bridged set_pose service, waiting for
+        the acknowledgement. Returns whether it was acked.
+
+        Strictly one request at a time: the gz service handler behind the
+        bridge does not cope with concurrent requests and silently drops some
+        (measured 10/12 acked when fired together, whether from one client or
+        twelve -- and a dropped request means a dropped teleport, so the map in
+        Gazebo stops matching the observation). Sequential is also simply
+        faster here: 12 teleports take 3 ms this way versus seconds spent in
+        timeouts when batched."""
+        req = SetEntityPose.Request()
+        req.entity.name = name
+        req.entity.type = _ENTITY_MODEL
+        req.pose.position.x = float(x)
+        req.pose.position.y = float(y)
+        req.pose.position.z = float(z)
+        if yaw is None:
+            req.pose.orientation.w = 1.0
+        else:
+            req.pose.orientation.z = math.sin(yaw / 2)
+            req.pose.orientation.w = math.cos(yaw / 2)
+        fut = self.pose_cli.call_async(req)
+        rclpy.spin_until_future_complete(self.node, fut, timeout_sec=timeout)
+        if not fut.done():
+            self.pose_cli.remove_pending_request(fut)
+            print(f"[gazebo_agv_env] WARNING: set_pose({name}) not acked "
+                  f"within {timeout}s", flush=True)
+            return False
+        return True
+
+    def _apply_map(self, grid: np.ndarray):
+        """Make Gazebo match `grid` by teleporting the obs_* models onto its
+        interior obstacle cells, and cache those cells for the proximity
+        penalty.
+
+        Requires the world to carry at least as many obs_* models as the map
+        has interior obstacles (gen_world.py emits exactly that many, and
+        make_map_pool keeps the count identical across the pool)."""
+        self.grid = grid
+        size = grid.shape[0]
+        ys, xs = np.nonzero(grid)
+        interior = [(int(x), int(y)) for x, y in zip(xs, ys)
+                    if 0 < x < size - 1 and 0 < y < size - 1]
+        self._obstacles = np.array(interior, dtype=np.float32).reshape(-1, 2)
+        if len(interior) > self.n_obstacle_slots:
+            raise RuntimeError(
+                f"map needs {len(interior)} obstacle models but the world only "
+                f"has {self.n_obstacle_slots} (obs_0..obs_{self.n_obstacle_slots - 1}); "
+                "regenerate the world with worlds/gen_world.py")
+        for i, (x, y) in enumerate(interior):
+            self._set_pose(f"obs_{i}", x, y, 0.9)
 
     def _odom_cb(self, msg: Odometry):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -160,16 +250,21 @@ class GazeboAGVEnv(gym.Env):
         self.cmd_pub.publish(TwistStamped())  # stop before teleport
         self._spin(2)
 
+        if len(self.grids) > 1:
+            self._apply_map(self.grids[int(self._rng.integers(len(self.grids)))])
+        elif self._obstacles.shape[0] == 0:
+            self._apply_map(self.grids[0])  # cache obstacle cells
+
         start = sample_free_cell(self.grid, self._rng).astype(np.float32)
         if self.max_goal_dist is not None:
             self.goal = sample_goal_near(self.grid, start, self.max_goal_dist, self._rng).astype(np.float32)
         else:
             self.goal = sample_free_cell(self.grid, self._rng).astype(np.float32)
         start_yaw = float(self._rng.uniform(-np.pi, np.pi))
-        teleport(self.world, self.robot_name, float(start[0]), float(start[1]),
-                 yaw=start_yaw)
-        teleport(self.world, "goal_marker", float(self.goal[0]), float(self.goal[1]), z=0.15)
-        # let the sim advance past the teleport so /gt_odom reports the new pose
+        self._set_pose(self.robot_name, float(start[0]), float(start[1]), 0.05,
+                       yaw=start_yaw)
+        self._set_pose("goal_marker", float(self.goal[0]), float(self.goal[1]), 0.15)
+        # let the sim advance so the teleports land and /gt_odom reports the pose
         self._wait_sim(0.1)
 
         self._step_count = 0
@@ -193,6 +288,11 @@ class GazeboAGVEnv(gym.Env):
         progress = self._prev_dist - dist_to_goal
         self._prev_dist = dist_to_goal
         reward = -0.01 + 1.0 * progress
+        obstacle_dist = self._obstacle_dist()
+        if obstacle_dist < self.safe_dist:
+            # ramps from 0 at safe_dist to collision_coef right on the obstacle
+            reward -= self.collision_coef * (
+                (self.safe_dist - obstacle_dist) / self.safe_dist)
         if reached:
             # was +20.0: ~200x the per-step reward scale (+-0.1ish), which
             # produced huge TD-error spikes on the rare success transitions
@@ -205,7 +305,16 @@ class GazeboAGVEnv(gym.Env):
             stop.header.stamp = self.node.get_clock().now().to_msg()
             self.cmd_pub.publish(stop)
 
-        return self._obs(), reward, reached, truncated, {"dist_to_goal": dist_to_goal}
+        return self._obs(), reward, reached, truncated, {
+            "dist_to_goal": dist_to_goal, "obstacle_dist": obstacle_dist}
+
+    def _obstacle_dist(self) -> float:
+        """Distance from the robot to the nearest interior obstacle cell.
+        Brute force over the ~12 cells of the active map — cheaper than
+        maintaining a distance field, and exact on the continuous pose."""
+        if self._obstacles.shape[0] == 0:
+            return float("inf")
+        return float(np.min(np.linalg.norm(self._obstacles - self._pose, axis=1)))
 
     def _obs(self):
         # goal offset rotated into the robot frame: +x is straight ahead, +y is

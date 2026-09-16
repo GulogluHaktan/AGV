@@ -383,7 +383,7 @@
       </link>
     </model>
 
-    <model name="obs_21">
+    <model name="obs_0">
       <static>true</static>
       <pose>2 3 0.9 0 0 0</pose>
       <link name="link">
@@ -440,7 +440,7 @@
 
     </model>
 
-    <model name="obs_22">
+    <model name="obs_1">
       <static>true</static>
       <pose>6 3 0.9 0 0 0</pose>
       <link name="link">
@@ -497,7 +497,7 @@
 
     </model>
 
-    <model name="obs_23">
+    <model name="obs_2">
       <static>true</static>
       <pose>9 3 0.9 0 0 0</pose>
       <link name="link">
@@ -554,7 +554,7 @@
 
     </model>
 
-    <model name="obs_24">
+    <model name="obs_3">
       <static>true</static>
       <pose>13 3 0.9 0 0 0</pose>
       <link name="link">
@@ -611,7 +611,7 @@
 
     </model>
 
-    <model name="wall_25">
+    <model name="wall_21">
       <static>true</static>
       <pose>15 3 1.25 0 0 0</pose>
       <link name="link">
@@ -627,7 +627,7 @@
       </link>
     </model>
 
-    <model name="wall_26">
+    <model name="wall_22">
       <static>true</static>
       <pose>0 4 1.25 0 0 0</pose>
       <link name="link">
@@ -643,7 +643,7 @@
       </link>
     </model>
 
-    <model name="obs_27">
+    <model name="obs_4">
       <static>true</static>
       <pose>2 4 0.9 0 0 0</pose>
       <link name="link">
@@ -700,7 +700,7 @@
 
     </model>
 
-    <model name="obs_28">
+    <model name="obs_5">
       <static>true</static>
       <pose>13 4 0.9 0 0 0</pose>
       <link name="link">
@@ -757,7 +757,7 @@
 
     </model>
 
-    <model name="wall_29">
+    <model name="wall_23">
       <static>true</static>
       <pose>15 4 1.25 0 0 0</pose>
       <link name="link">
@@ -773,7 +773,7 @@
       </link>
     </model>
 
-    <model name="wall_30">
+    <model name="wall_24">
       <static>true</static>
       <pose>0 5 1.25 0 0 0</pose>
       <link name="link">
@@ -789,7 +789,7 @@
       </link>
     </model>
 
-    <model name="wall_31">
+    <model name="wall_25">
       <static>true</static>
       <pose>15 5 1.25 0 0 0</pose>
       <link name="link">
@@ -805,7 +805,7 @@
       </link>
     </model>
 
-    <model name="wall_32">
+    <model name="wall_26">
       <static>true</static>
       <pose>0 6 1.25 0 0 0</pose>
       <link name="link">
@@ -821,7 +821,7 @@
       </link>
     </model>
 
-    <model name="wall_33">
+    <model name="wall_27">
       <static>true</static>
       <pose>15 6 1.25 0 0 0</pose>
       <link name="link">
@@ -837,7 +837,7 @@
       </link>
     </model>
 
-    <model name="wall_34">
+    <model name="wall_28">
       <static>true</static>
       <pose>0 7 1.25 0 0 0</pose>
       <link name="link">
@@ -853,7 +853,7 @@
       </link>
     </model>
 
-    <model name="obs_35">
+    <model name="obs_6">
       <static>true</static>
       <pose>3 7 0.9 0 0 0</pose>
       <link name="link">
@@ -910,7 +910,7 @@
 
     </model>
 
-    <model name="obs_36">
+    <model name="obs_7">
       <static>true</static>
       <pose>12 7 0.9 0 0 0</pose>
       <link name="link">
@@ -967,7 +967,7 @@
 
     </model>
 
-    <model name="wall_37">
+    <model name="wall_29">
       <static>true</static>
       <pose>15 7 1.25 0 0 0</pose>
       <link name="link">
@@ -983,7 +983,7 @@
       </link>
     </model>
 
-    <model name="wall_38">
+    <model name="wall_30">
       <static>true</static>
       <pose>0 8 1.25 0 0 0</pose>
       <link name="link">
@@ -999,7 +999,7 @@
       </link>
     </model>
 
-    <model name="obs_39">
+    <model name="obs_8">
       <static>true</static>
       <pose>6 8 0.9 0 0 0</pose>
       <link name="link">
@@ -1056,7 +1056,7 @@
 
     </model>
 
-    <model name="obs_40">
+    <model name="obs_9">
       <static>true</static>
       <pose>9 8 0.9 0 0 0</pose>
       <link name="link">
@@ -1113,7 +1113,7 @@
 
     </model>
 
-    <model name="wall_41">
+    <model name="wall_31">
       <static>true</static>
       <pose>15 8 1.25 0 0 0</pose>
       <link name="link">
@@ -1129,7 +1129,7 @@
       </link>
     </model>
 
-    <model name="wall_42">
+    <model name="wall_32">
       <static>true</static>
       <pose>0 9 1.25 0 0 0</pose>
       <link name="link">
@@ -1145,7 +1145,7 @@
       </link>
     </model>
 
-    <model name="wall_43">
+    <model name="wall_33">
       <static>true</static>
       <pose>15 9 1.25 0 0 0</pose>
       <link name="link">
@@ -1161,7 +1161,7 @@
       </link>
     </model>
 
-    <model name="wall_44">
+    <model name="wall_34">
       <static>true</static>
       <pose>0 10 1.25 0 0 0</pose>
       <link name="link">
@@ -1177,7 +1177,7 @@
       </link>
     </model>
 
-    <model name="wall_45">
+    <model name="wall_35">
       <static>true</static>
       <pose>15 10 1.25 0 0 0</pose>
       <link name="link">
@@ -1193,7 +1193,7 @@
       </link>
     </model>
 
-    <model name="wall_46">
+    <model name="wall_36">
       <static>true</static>
       <pose>0 11 1.25 0 0 0</pose>
       <link name="link">
@@ -1209,7 +1209,7 @@
       </link>
     </model>
 
-    <model name="obs_47">
+    <model name="obs_10">
       <static>true</static>
       <pose>2 11 0.9 0 0 0</pose>
       <link name="link">
@@ -1266,7 +1266,7 @@
 
     </model>
 
-    <model name="obs_48">
+    <model name="obs_11">
       <static>true</static>
       <pose>13 11 0.9 0 0 0</pose>
       <link name="link">
@@ -1323,7 +1323,7 @@
 
     </model>
 
-    <model name="wall_49">
+    <model name="wall_37">
       <static>true</static>
       <pose>15 11 1.25 0 0 0</pose>
       <link name="link">
@@ -1339,7 +1339,7 @@
       </link>
     </model>
 
-    <model name="wall_50">
+    <model name="wall_38">
       <static>true</static>
       <pose>0 12 1.25 0 0 0</pose>
       <link name="link">
@@ -1355,7 +1355,7 @@
       </link>
     </model>
 
-    <model name="wall_51">
+    <model name="wall_39">
       <static>true</static>
       <pose>15 12 1.25 0 0 0</pose>
       <link name="link">
@@ -1371,7 +1371,7 @@
       </link>
     </model>
 
-    <model name="wall_52">
+    <model name="wall_40">
       <static>true</static>
       <pose>0 13 1.25 0 0 0</pose>
       <link name="link">
@@ -1387,7 +1387,7 @@
       </link>
     </model>
 
-    <model name="wall_53">
+    <model name="wall_41">
       <static>true</static>
       <pose>15 13 1.25 0 0 0</pose>
       <link name="link">
@@ -1403,7 +1403,7 @@
       </link>
     </model>
 
-    <model name="wall_54">
+    <model name="wall_42">
       <static>true</static>
       <pose>0 14 1.25 0 0 0</pose>
       <link name="link">
@@ -1419,7 +1419,7 @@
       </link>
     </model>
 
-    <model name="wall_55">
+    <model name="wall_43">
       <static>true</static>
       <pose>15 14 1.25 0 0 0</pose>
       <link name="link">
@@ -1435,7 +1435,7 @@
       </link>
     </model>
 
-    <model name="wall_56">
+    <model name="wall_44">
       <static>true</static>
       <pose>0 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1451,7 +1451,7 @@
       </link>
     </model>
 
-    <model name="wall_57">
+    <model name="wall_45">
       <static>true</static>
       <pose>1 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1467,7 +1467,7 @@
       </link>
     </model>
 
-    <model name="wall_58">
+    <model name="wall_46">
       <static>true</static>
       <pose>2 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1483,7 +1483,7 @@
       </link>
     </model>
 
-    <model name="wall_59">
+    <model name="wall_47">
       <static>true</static>
       <pose>3 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1499,7 +1499,7 @@
       </link>
     </model>
 
-    <model name="wall_60">
+    <model name="wall_48">
       <static>true</static>
       <pose>4 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1515,7 +1515,7 @@
       </link>
     </model>
 
-    <model name="wall_61">
+    <model name="wall_49">
       <static>true</static>
       <pose>5 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1531,7 +1531,7 @@
       </link>
     </model>
 
-    <model name="wall_62">
+    <model name="wall_50">
       <static>true</static>
       <pose>6 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1547,7 +1547,7 @@
       </link>
     </model>
 
-    <model name="wall_63">
+    <model name="wall_51">
       <static>true</static>
       <pose>7 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1563,7 +1563,7 @@
       </link>
     </model>
 
-    <model name="wall_64">
+    <model name="wall_52">
       <static>true</static>
       <pose>8 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1579,7 +1579,7 @@
       </link>
     </model>
 
-    <model name="wall_65">
+    <model name="wall_53">
       <static>true</static>
       <pose>9 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1595,7 +1595,7 @@
       </link>
     </model>
 
-    <model name="wall_66">
+    <model name="wall_54">
       <static>true</static>
       <pose>10 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1611,7 +1611,7 @@
       </link>
     </model>
 
-    <model name="wall_67">
+    <model name="wall_55">
       <static>true</static>
       <pose>11 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1627,7 +1627,7 @@
       </link>
     </model>
 
-    <model name="wall_68">
+    <model name="wall_56">
       <static>true</static>
       <pose>12 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1643,7 +1643,7 @@
       </link>
     </model>
 
-    <model name="wall_69">
+    <model name="wall_57">
       <static>true</static>
       <pose>13 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1659,7 +1659,7 @@
       </link>
     </model>
 
-    <model name="wall_70">
+    <model name="wall_58">
       <static>true</static>
       <pose>14 15 1.25 0 0 0</pose>
       <link name="link">
@@ -1675,7 +1675,7 @@
       </link>
     </model>
 
-    <model name="wall_71">
+    <model name="wall_59">
       <static>true</static>
       <pose>15 15 1.25 0 0 0</pose>
       <link name="link">
