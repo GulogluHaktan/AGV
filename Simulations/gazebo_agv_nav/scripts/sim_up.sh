@@ -42,7 +42,11 @@ if [ -f "$PIDFILE" ]; then
   rm -f "$PIDFILE"
 fi
 
-gz sim -r -s -v1 "$WS/worlds/agv_nav.sdf" > "$LOGDIR/gz_${DOMAIN}.log" 2>&1 &
+# setsid: each launch gets its own process group, so sim_down.sh can signal
+# the whole group. `ros2 run` in particular forks the real parameter_bridge as
+# a CHILD, and killing only the recorded parent leaves that child orphaned --
+# eight of them accumulated across a session before this was noticed.
+setsid gz sim -r -s -v1 "$WS/worlds/agv_nav.sdf" > "$LOGDIR/gz_${DOMAIN}.log" 2>&1 &
 GZ_PID=$!
 echo "$GZ_PID" > "$PIDFILE"
 echo "gz pid $GZ_PID"
@@ -55,7 +59,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-ros2 run ros_gz_bridge parameter_bridge --ros-args \
+setsid ros2 run ros_gz_bridge parameter_bridge --ros-args \
   -p config_file:="$WS/launch/bridge.yaml" > "$LOGDIR/bridge_${DOMAIN}.log" 2>&1 &
 BRIDGE_PID=$!
 echo "$BRIDGE_PID" >> "$PIDFILE"

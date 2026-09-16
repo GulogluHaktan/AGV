@@ -23,12 +23,16 @@ stop_domain() {
   fi
   local pids
   pids=$(cat "$pidfile")
+  # signal the whole PROCESS GROUP (negative pid), not just the recorded
+  # leader: `ros2 run` forks the real parameter_bridge as a child, so killing
+  # the leader alone leaks that child. sim_up.sh starts each launch under
+  # setsid precisely so the group id equals the recorded pid.
   for pid in $pids; do
-    kill "$pid" 2>/dev/null || true
+    kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
   done
   sleep 2
   for pid in $pids; do
-    kill -9 "$pid" 2>/dev/null || true
+    kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   done
   rm -f "$pidfile"
   echo "sim down (domain $domain)"

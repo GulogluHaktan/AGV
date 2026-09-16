@@ -193,11 +193,13 @@ def main():
                                    n_obstacles=2 * args.n_obstacle_pairs)
 
     spawn_x, spawn_y = args.grid_size / 2, args.grid_size / 2
-    default_uri = "/opt/ros/jazzy/share/turtlebot3_gazebo/models/turtlebot3_burger"
-    if not os.path.exists(default_uri):
-        default_uri = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "models", "turtlebot3_burger")
-    model_uri = os.environ.get("TB3_MODEL_URI", default_uri)
+    # `model://` is resolved by Gazebo through GZ_SIM_RESOURCE_PATH, which
+    # sim_up.sh/run_native.sh point at this repo's models/ directory. Writing a
+    # relative URI keeps the generated SDF machine-independent -- it used to
+    # embed an absolute path, so the committed world only worked on the machine
+    # that generated it. TB3_MODEL_URI still overrides if a specific path is
+    # wanted.
+    model_uri = os.environ.get("TB3_MODEL_URI", "model://turtlebot3_burger")
     sdf = SDF_HEADER.format(spawn_x=spawn_x, spawn_y=spawn_y, model_uri=model_uri)
     size = args.grid_size
     # Separate counters: obstacle models must be named obs_0..obs_{N-1}
