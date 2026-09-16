@@ -537,3 +537,38 @@ simetri testi (4808 kontrol) yeniden koşuldu ve geçti.
 
 **Şu an koşan:** `sac_baseline_v6` — baseline, SAC, bant curriculum, 24×24, 830k adım,
 18-21 fps, tahmini ~11 saat.
+
+## 17. 3. kol düzeltildi: vektör-alanı okuması (B′) — 2026-09-16
+
+Karar B′ oldu ve uygulandı. `envs/equivariant_extractor.py` yeniden yazıldı.
+
+**Ne yapıyor:** eşdeğişken CNN yığınının son katmanı artık skaler yerine **vektör alanları**
+(D4'ün 2 boyutlu irrep'i, `gspace.irrep(1,1)`) ve yanında değişmez skaler alanlar üretiyor.
+Uzamsal ortalama alma vektör alanları için eşdeğişkendir (döndürülmüş vektörlerin ortalaması,
+ortalamanın döndürülmüşüdür), dolayısıyla havuzlamadan sonra elde dünya-çerçevesi vektörler
+kalıyor: "kalabalık şu yöne artıyor". Bunlar gözlemden kurtarılan iki referans yönle iç
+çarpıma sokuluyor — robotun yönü `h` ve onun diki `h_perp`.
+
+**Neden "tam değişmez" değil, kasıtlı olarak:** aynalama altında doğru aksiyon
+`(doğrusal, -açısal)`. Ayna-değişmez özellikler bu çevrilmiş davranışı ifade EDEMEZ. Vektör
+ile referans birlikte döndüğü için `v·h` tam dönme-değişmez; yansıma yönelimi tersine
+çevirdiği için `h_perp` işaret alır, yani `v·h_perp` ayna-TEK. Böylece özellik kümesi
+aksiyonun kendi dönüşüm kuralıyla aynı şekilde dönüşüyor — `goal_body`'nin sol/sağ bileşeni
+gibi. Dönme-değişmezliği G3'ün ihtiyaç duyduğu şey (`d4_orbit` simetrik düzenlerde dejenere
+aynayı attığı için ayrılmış set dönmelerden oluşuyor).
+
+Özellikler `[even | odd]` sırasıyla diziliyor ki test işaret desenini doğrulayabilsin.
+
+**Konvansiyon kalibrasyonu (tahmin edilmedi, ölçüldü):** escnn'in vektör tabanı ile bizim
+dünya çerçevemiz iki bileşenin takası kadar farklı — escnn'in dönmeleri
+`transform_direction`'ın tersi çıkıyor ve yansıma ekseni diğeri. Havuzlanmış alanın dönüşüm
+matrisi sekiz grup elemanı için en küçük karelerle çıkarıldı ve `transform_direction` ile
+karşılaştırıldı; `(x,y)` takası ikisini birden gideriyor (`_SWAP_XY`).
+
+**Doğrulama:** `scripts/test_equivariance.py` artık dünyayı gerçekten dönüştürüp (ızgara,
+heading, goal_body — augmentation wrapper'ının kullandığı grup etkisiyle aynı) çıktıyı
+karşılaştırıyor. Sonuç: **sekiz elemanın tamamında bağıl hata 0.00000**. Ayrıca SB3 ile uçtan
+uca koştu: cuda, 466.760 parametre, 150 adım eğitim sorunsuz.
+
+Not: vektör alanı katmanından sonra noktasal ReLU yok — irrep alanlarında noktasal
+doğrusal-olmayanlık eşdeğişken değildir.
