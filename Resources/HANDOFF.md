@@ -572,3 +572,29 @@ uca koştu: cuda, 466.760 parametre, 150 adım eğitim sorunsuz.
 
 Not: vektör alanı katmanından sonra noktasal ReLU yok — irrep alanlarında noktasal
 doğrusal-olmayanlık eşdeğişken değildir.
+
+## 18. Bu makinede eğitim durduruldu (2026-09-16 17:20)
+
+Eğitim başka bir bilgisayarda yapılacağı için burada durduruldu. `sac_baseline_v6` s1'in
+ortasındaydı (25.874/830.000 adım); SB3 yalnızca aşama sonunda kaydettiği için **checkpoint
+yok**, o ~26k adım kayıp. Log `sac_baseline_v6.log` olarak duruyor (öğrenme eğrisinin ilk
+parçası; `extract_results.py` okuyabilir).
+
+Süreçler temizlendi: eğitim, gz sim ve köprüler kapalı, yetim süreç yok.
+
+**Yeni makinede nasıl devam edilir:** `Simulations/gazebo_agv_nav/ENVIRONMENT.md` içindeki
+"Running on a different machine" bölümü baştan sona anlatıyor — ortam kurulumu (escnn'i
+eğitimden ÖNCE kurun, numpy<2 pini), dünyanın yeniden üretilmesi, GPU harcamadan önce
+koşulacak üç kontrol (kapı testi, simetri testi, eşdeğişkenlik testi) ve iki kolu ayrı ROS
+domain'lerinde eşzamanlı koşma.
+
+**Üç kolun hepsi hazır ve doğrulanmış durumda:**
+- baseline — v4'te s1 %95/%95, s2 %70/%90 ile env düzeltmesini doğruladı
+- symmetric_augmentation — SB3 ile uçtan uca koştu, grup etkisi 4808 kontrolle doğrulandı
+- equivariant — vektör-alanı okuması, sekiz D4 elemanında 0.00000 hata, SB3 ile koştu
+
+**Açık kalan tek analiz işi:** adım bütçelerinin küçültülüp küçültülemeyeceği. Toplam 830k
+adımın 500k'sı s4+s5'te. Karar için yeni monoton merdivende s3 sonuna kadar (330k adım) bir
+eğri gerekiyor; v4'ün düz görünen üst aşamaları ESKİ dejenere merdivenden geliyor, o yüzden
+kanıt sayılmaz. Yeni makinede baseline s3'ü bitirdiğinde `extract_results.py` ile aşama-içi
+iyileşmeye bakın: aşama ilk çeyrekten son çeyreğe anlamlı ilerlemiyorsa o bütçe kısaltılabilir.
