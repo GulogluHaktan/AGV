@@ -243,3 +243,73 @@ YENİ DENEYLERDE KULLANMAYIN — eski kırık dinamikle eğitildiler). Düzeltil
 Beklenti: eğitim-zamanı başarı ile stage-sonu eval artık tutarlı olmalı ve mutlak başarı
 oranları belirgin yükselmeli. v3 de düşük kalırsa bakılacak ilk şeyler: ent_coef aşama-bazlı
 düşürme, learning_starts, ödül şekillendirmesi — ama önce yeni dinamikte bir tam koşu görün.
+
+## 12. GÖREV ÖĞRENİLEBİLİR DEĞİL: gözlem uzayında robot yönü (yaw) yok (2026-09-16)
+
+`sac_baseline_v3` 5 aşamayı tamamladı (02:18). Sim-süresi düzeltmesi çalıştı — eğitim ile
+eval artık aynı fizikte koşuyor — **ama politika hiç öğrenmedi:**
+
+| Aşama | Deterministik | Stokastik |
+|-------|---------------|-----------|
+| s1 | %5 | %30 |
+| s2 | %10 | %10 |
+| s3 | %0 | %0 |
+| s4 | %0 | %5 |
+| s5 | %0 | %15 |
+| FINAL (tam-rastgele) | **%0** | **%13.3** |
+
+Belirleyici kanıt, 780k adım sonunda aksiyon istatistikleri: `linear mean=-0.08 std=0.57 |
+angular mean=+0.01 std=0.57`. **Ortalama aksiyon sıfır, std ise tanh-sıkıştırılmış politika
+için neredeyse tavanda.** Yani öğrenilen politika "yerinde dur"; deterministik eval %0 çünkü
+robot hiç hareket etmiyor, stokastik eval'deki %13-15 ise tamamen **keşif gürültüsünün
+rastgele yürüyüşü** — hedef yarıçapı 1.2 m olduğu için ara sıra üstüne denk geliyor.
+`ep_rew_mean` de 0.65'ten -2.26'ya iniyor; bu, adım cezası (-0.01 × 320) dışında net mesafe
+kapatılmadığı anlamına geliyor (~0.7 m / 320 adım).
+
+**Neden:** Gözlem `{occupancy, goal_relative}`; `goal_relative = (goal - pose)/grid_size`
+yani **dünya çerçevesinde**. Aksiyon ise `(linear_v, angular_v)` — **robot gövde
+çerçevesinde**. Robotun yönü (yaw) gözlemde hiçbir yerde YOK (`envs/` altında
+`yaw|orientation|theta|quat` geçen tek satır bile yok). "Hedef 3 m kuzeydoğunda, hangi gövde-
+çerçevesi hızını vereyim?" sorusunun cevabı tamamen yaw'a bağlı ve yaw gizli. Bu, kritik
+durumu eksik bir POMDP — **optimal davranış gerçekten de "sıfır ortalama + yüksek varyans"
+ile riskten korunmak**, ki ajan tam olarak bunu buldu. Daha fazla eğitim, ödül ayarı,
+entropi ayarı bunu düzeltemez.
+
+Ek olarak `teleport()` yalnızca `position` gönderiyor, `orientation` göndermiyor — yaw
+episode'lar arasında sıfırlanmıyor, önceki episode'dan devrediyor (kontrolsüz gizli değişken).
+
+**Bu hata en baştan var:** terk edilen Isaac prototipi de aynı gözlem uzayını kullanıyor
+(`isaac_agv_nav/envs/agv_nav_env.py:44-48`); `pose[2]=theta` sadece dinamik entegrasyonu için
+tutuluyor, gözleme hiç konmuyor. Dolayısıyla **bugüne kadarki TÜM koşular
+(`curriculum_*`, `baseline_*`, `sac_baseline*` v1/v2/v3) çözülemez bir görevde eğitildi;
+hiçbirinin başarı sayısı anlamlı değil.**
+
+### 12b. İkinci kusur (makale açısından daha kritik): occupancy ızgarası sabit
+
+`curriculum_train.py:111` haritayı stage döngüsünün DIŞINDA bir kez üretiyor — tüm koşu
+boyunca tek harita. Yani `occupancy` gözlemi **sabit bir girdi**; hiçbir bilgi taşımıyor.
+Bu doğrudan makalenin kalbini vuruyor: hem simetrik veri artırımı hem de D4-eşdeğişken CNN
+occupancy ızgarası üzerinde çalışıyor. Sabit bir ızgarada eşdeğişkenliğin üzerinde
+çalışacağı bir şey yok — **üç kol arasındaki karşılaştırma bu haliyle boş bir karşılaştırma
+olur.** (Isaac prototipinde episode başına `_new_map()` vardı; Gazebo'ya taşırken kayıp.)
+
+### 12c. Üçüncü kusur: çarpışma cezası ve ego-merkezli algı yok
+
+Ödül `-0.01 + progress (+5 hedef)`; çarpışma terimi yok. Robot modeli `/scan` (360-ışın
+lidar) yayınlıyor ama `launch/bridge.yaml` yalnızca `odom` + `cmd_vel` köprülüyor — ajan
+engelleri hiç görmüyor. Engelden kaçınma öğrenmesi için sinyal de algı da yok.
+
+### 12d. Önerilen düzeltme sırası (henüz UYGULANMADI — karar bekliyor)
+
+1. **Yaw'ı gözleme ekle ve hedefi gövde çerçevesine çevir.** Odom quaternion'undan θ çıkar;
+   `goal_relative`'ı −θ ile döndür (veya `(cos θ, sin θ)` ekle). Gövde çerçevesi hem doğrudan
+   uygulanabilir bilgi verir hem de D4 grubunun temsile temiz etki etmesini sağlar.
+2. **Reset'te yaw'ı rastgele ata** (`teleport()`'a `orientation` ekle) — gizli değişkeni
+   kontrol altına al.
+3. **UCUZ KAPI TESTİ — yeni 8 saatlik koşudan ÖNCE yapın:** elle yazılmış bir kontrolcü
+   (hedefe dön, sonra ilerle) bu görevde ~%90+ almalı. Almıyorsa env hâlâ bozuk demektir.
+   Bu 5 dakikalık test, iki gece boşa giden GPU süresini baştan yakalardı.
+4. **Haritayı episode başına değiştir** (prosedürel simetrik varyantlar) — occupancy'nin
+   bilgi içeriğini ve dolayısıyla simetri karşılaştırmasının anlamını geri getir.
+5. Çarpışma cezası + `/scan`'i köprüle (ego-merkezli engel algısı).
+6. Ancak bundan sonra baseline / augmentation / equivariant üç kolunu koş.
