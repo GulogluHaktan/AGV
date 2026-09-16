@@ -35,7 +35,7 @@ from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
 from ros_gz_interfaces.srv import SetEntityPose
 
-from envs.map_generator import sample_free_cell, sample_goal_near
+from envs.map_generator import sample_free_cell, sample_goal_band
 
 _ENTITY_MODEL = 2  # ros_gz_interfaces/Entity.MODEL
 
@@ -73,7 +73,8 @@ class GazeboAGVEnv(gym.Env):
     def __init__(self, grid, grid_size: int, max_steps: int = 120,
                  goal_radius: float = 1.2, seed: int | None = None,
                  world: str = "agv_nav", robot_name: str = "burger",
-                 max_goal_dist: float | None = None, control_dt: float = 0.5,
+                 max_goal_dist: float | None = None, min_goal_dist: float = 0.0,
+                 control_dt: float = 0.5,
                  collision_coef: float = 0.05, safe_dist: float = 1.0,
                  n_obstacle_slots: int = 12):
         super().__init__()
@@ -91,8 +92,12 @@ class GazeboAGVEnv(gym.Env):
         self.goal_radius = goal_radius
         self.world = world
         self.robot_name = robot_name
-        # curriculum: cap start-goal distance (None = full random, i.e. hardest)
+        # Curriculum band on the start-goal distance. max=None means no
+        # ceiling (hardest stage); min > goal_radius keeps every episode a real
+        # navigation problem -- without a floor, 19% of early-stage episodes
+        # used to start already inside the goal radius (HANDOFF 14).
         self.max_goal_dist = max_goal_dist
+        self.min_goal_dist = min_goal_dist
         # SIM seconds one env step lasts. Steps used to last however long the
         # Python side took in WALL time (2 spins ~ a few ms in eval, ~20ms
         # during training because of the gradient update between steps), so
@@ -256,10 +261,9 @@ class GazeboAGVEnv(gym.Env):
             self._apply_map(self.grids[0])  # cache obstacle cells
 
         start = sample_free_cell(self.grid, self._rng).astype(np.float32)
-        if self.max_goal_dist is not None:
-            self.goal = sample_goal_near(self.grid, start, self.max_goal_dist, self._rng).astype(np.float32)
-        else:
-            self.goal = sample_free_cell(self.grid, self._rng).astype(np.float32)
+        self.goal = sample_goal_band(
+            self.grid, start, self.min_goal_dist, self.max_goal_dist,
+            self._rng).astype(np.float32)
         start_yaw = float(self._rng.uniform(-np.pi, np.pi))
         self._set_pose(self.robot_name, float(start[0]), float(start[1]), 0.05,
                        yaw=start_yaw)

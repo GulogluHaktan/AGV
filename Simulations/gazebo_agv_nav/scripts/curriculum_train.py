@@ -14,6 +14,8 @@ sys.path.insert(0, os.environ.get("AGV_WORKSPACE",
 import numpy as np
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback
+from envs.curriculum import (STAGES, GRID_SIZE, N_MAPS, N_OBSTACLE_PAIRS,
+                             N_OBSTACLE_SLOTS)
 from envs.map_generator import make_map_pool
 from envs.gazebo_agv_env import GazeboAGVEnv
 from envs.wrappers import SymmetricAugmentationWrapper
@@ -54,24 +56,20 @@ class SuccessRateCallback(BaseCallback):
                       f"spin-in-place frac={spin_frac:.1%}", flush=True)
         return True
 
-STAGES = [
-    dict(name="s1", max_goal_dist=4,    max_steps=80,  timesteps=80_000),
-    dict(name="s2", max_goal_dist=8,    max_steps=140, timesteps=120_000),
-    dict(name="s3", max_goal_dist=12,   max_steps=200, timesteps=150_000),
-    dict(name="s4", max_goal_dist=16,   max_steps=260, timesteps=180_000),
-    dict(name="s5", max_goal_dist=None, max_steps=320, timesteps=250_000),
-]
 
 
-def make_env(pool, grid_size, seed, max_goal_dist, max_steps, arm):
+def make_env(pool, grid_size, seed, stage, arm):
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
-                        max_goal_dist=max_goal_dist, max_steps=max_steps)
+                        min_goal_dist=stage["min_goal_dist"],
+                        max_goal_dist=stage["max_goal_dist"],
+                        max_steps=stage["max_steps"],
+                        n_obstacle_slots=N_OBSTACLE_SLOTS)
     if arm == "symmetric_augmentation":
         env = SymmetricAugmentationWrapper(env, seed=seed)
     return env
 
 
-def evaluate(model, pool, grid_size, seed, max_goal_dist, max_steps, n_episodes=20):
+def evaluate(model, pool, grid_size, seed, stage, n_episodes=20):
     """Returns (deterministic_sr, stochastic_sr). Both are reported because the
     deterministic mean action lags well behind the stochastic behavior early in
     training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
@@ -79,7 +77,10 @@ def evaluate(model, pool, grid_size, seed, max_goal_dist, max_steps, n_episodes=
     metric artifact), and the stochastic number is the one comparable to the
     train-time rolling success rate."""
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
-                        max_goal_dist=max_goal_dist, max_steps=max_steps)
+                        min_goal_dist=stage["min_goal_dist"],
+                        max_goal_dist=stage["max_goal_dist"],
+                        max_steps=stage["max_steps"],
+                        n_obstacle_slots=N_OBSTACLE_SLOTS)
     rates = []
     for deterministic in (True, False):
         successes = 0
@@ -99,9 +100,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", choices=["baseline", "symmetric_augmentation", "equivariant"], default="baseline")
     ap.add_argument("--algo", choices=["ppo", "sac"], default="sac")
-    ap.add_argument("--grid_size", type=int, default=16)
+    ap.add_argument("--grid_size", type=int, default=GRID_SIZE)
     ap.add_argument("--seed", type=int, default=3)
-    ap.add_argument("--n_maps", type=int, default=24,
+    ap.add_argument("--n_maps", type=int, default=N_MAPS,
                     help="canonical-orientation training layouts; the env samples "
                          "one per episode. A single fixed map makes the occupancy "
                          "observation a constant, which is exactly the input both "
@@ -115,7 +116,8 @@ def main():
     # Training distribution: canonical-orientation layouts only. The D4
     # images of these, plus fresh unseen layouts, are held back for the G3
     # generalization evaluation and must never be sampled here.
-    pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps, seed=args.seed)
+    pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps,
+                     seed=args.seed, n_obstacle_pairs=N_OBSTACLE_PAIRS)
 
     ckpt = args.resume_from
     results = {}
@@ -123,10 +125,9 @@ def main():
     for idx, stage in enumerate(STAGES):
         if idx < args.start_stage:
             continue
-        print(f"=== STAGE {stage['name']}: dist<={stage['max_goal_dist']} "
+        print(f"=== STAGE {stage['name']}: dist {stage['min_goal_dist']}-{stage['max_goal_dist']} "
               f"steps={stage['max_steps']} timesteps={stage['timesteps']} ===", flush=True)
-        env = make_env(pool, args.grid_size, args.seed, stage["max_goal_dist"],
-                        stage["max_steps"], args.arm)
+        env = make_env(pool, args.grid_size, args.seed, stage, args.arm)
         policy_kwargs = {}
         if args.arm == "equivariant":
             from envs.equivariant_extractor import D4EquivariantExtractor
@@ -161,14 +162,13 @@ def main():
         model.save(ckpt)
         env.close()
 
-        sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
-                                     stage["max_goal_dist"], stage["max_steps"])
+        sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed, stage)
         print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
               f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
         results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
 
-    sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed, None,
-                                 STAGES[-1]["max_steps"], n_episodes=30)
+    sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
+                                 STAGES[-1], n_episodes=30)
     print(f"=== FINAL full-random task success_rate={sr_det:.2%} "
           f"stochastic={sr_stoch:.2%} ===", flush=True)
     results["final_full_random"] = {"deterministic": sr_det, "stochastic": sr_stoch}

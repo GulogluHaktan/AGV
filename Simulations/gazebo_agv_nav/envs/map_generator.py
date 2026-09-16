@@ -51,8 +51,51 @@ def asymmetric_corridor(size: int = 32, seed: int | None = None,
     return grid
 
 
-def make_map_pool(size: int = 16, n_maps: int = 24, seed: int = 0,
-                   n_obstacle_pairs: int = 6) -> list[np.ndarray]:
+def sample_goal_band(grid: np.ndarray, start: np.ndarray,
+                      min_dist: float, max_dist: float | None,
+                      rng: np.random.Generator, margin: int = 2,
+                      tries: int = 400) -> np.ndarray:
+    """Free cell whose distance from `start` lies in [min_dist, max_dist].
+
+    Replaces the box sampler (`sample_goal_near`, kept for reference), which
+    only imposed an upper bound and produced a curriculum that did not actually
+    get harder -- measured over the 24-map pool, stages capped at 12/16/None
+    all averaged 5.8-6.7 m, and the nominally hardest full-random stage came
+    out EASIER than the stage before it. Worse, with no lower bound 19% of
+    early-stage episodes started already inside the goal radius, i.e. solved
+    before the policy acted. A band fixes both: successive stages raise the
+    floor as well as the ceiling, and the floor keeps every episode a real
+    navigation problem.
+
+    max_dist=None means "no ceiling" (the hardest stage), which with a raised
+    floor is now genuinely the hardest rather than merely unbounded.
+    """
+    size = grid.shape[0]
+    lo, hi = margin, size - margin
+    ceiling = max_dist if max_dist is not None else float(size) * 2.0
+    best, best_err = None, None
+    for _ in range(tries):
+        # sample a direction and a radius inside the band directly, so the
+        # band is hit often instead of being rejection-tested against a box
+        theta = rng.uniform(0.0, 2.0 * np.pi)
+        r = rng.uniform(min_dist, ceiling)
+        xy = np.round(start + r * np.array([np.cos(theta), np.sin(theta)]))
+        xy = np.clip(xy, lo, hi - 1).astype(int)
+        if grid[xy[1], xy[0]] != 0:
+            continue
+        d = float(np.linalg.norm(xy - start))
+        if min_dist <= d <= ceiling:
+            return xy
+        err = min_dist - d if d < min_dist else d - ceiling
+        if best is None or err < best_err:
+            best, best_err = xy, err
+    if best is not None:
+        return best
+    return sample_free_cell(grid, rng, margin)
+
+
+def make_map_pool(size: int = 24, n_maps: int = 24, seed: int = 0,
+                   n_obstacle_pairs: int = 14) -> list[np.ndarray]:
     """A pool of canonical-orientation training layouts.
 
     `symmetric_corridor` places every obstacle together with its left-right
@@ -62,6 +105,12 @@ def make_map_pool(size: int = 16, n_maps: int = 24, seed: int = 0,
 
     Every map has the same obstacle count so the physical obstacle pool in the
     Gazebo world is fully used on every episode and difficulty stays uniform.
+
+    Defaults are a 24x24 grid with 14 obstacle pairs. The grid grew from 16
+    because a 16x16 grid (12x12 once the margin is removed) caps start-goal
+    distance near 6 m, which collapsed the top three curriculum stages into one
+    difficulty; the obstacle count grew with it to hold clutter density roughly
+    constant (12/196 interior cells before, 28/484 after).
     """
     rng = np.random.default_rng(seed)
     return [symmetric_corridor(size=size, n_obstacle_pairs=n_obstacle_pairs, rng=rng)

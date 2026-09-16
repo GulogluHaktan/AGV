@@ -174,15 +174,23 @@ SDF_FOOTER = """
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--map_type", choices=["symmetric", "asymmetric"], default="symmetric")
-    ap.add_argument("--grid_size", type=int, default=32)
+    ap.add_argument("--grid_size", type=int, default=24)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--n_obstacle_pairs", type=int, default=14,
+                    help="must match envs/curriculum.N_OBSTACLE_PAIRS: the env\n                         teleports obs_0..obs_{2N-1} to realize each map")
     ap.add_argument("--out", default="/workspace/worlds/agv_nav.sdf")
     args = ap.parse_args()
 
     import numpy as np
     rng = np.random.default_rng(args.seed)
-    gen = symmetric_corridor if args.map_type == "symmetric" else asymmetric_corridor
-    grid = gen(size=args.grid_size, rng=rng)
+    # the two generators name their obstacle-count argument differently:
+    # symmetric places mirror PAIRS, asymmetric places singles
+    if args.map_type == "symmetric":
+        grid = symmetric_corridor(size=args.grid_size, rng=rng,
+                                  n_obstacle_pairs=args.n_obstacle_pairs)
+    else:
+        grid = asymmetric_corridor(size=args.grid_size, rng=rng,
+                                   n_obstacles=2 * args.n_obstacle_pairs)
 
     spawn_x, spawn_y = args.grid_size / 2, args.grid_size / 2
     default_uri = "/opt/ros/jazzy/share/turtlebot3_gazebo/models/turtlebot3_burger"

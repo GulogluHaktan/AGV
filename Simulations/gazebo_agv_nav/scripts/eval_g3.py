@@ -34,6 +34,8 @@ sys.path.insert(0, os.environ.get("AGV_WORKSPACE",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import numpy as np
 from stable_baselines3 import SAC, PPO
+from envs.curriculum import (STAGES, GRID_SIZE, N_MAPS, N_OBSTACLE_PAIRS,
+                             N_OBSTACLE_SLOTS)
 from envs.map_generator import make_map_pool, d4_orbit
 from envs.gazebo_agv_env import GazeboAGVEnv
 
@@ -41,10 +43,12 @@ from envs.gazebo_agv_env import GazeboAGVEnv
 FRESH_SEED_OFFSET = 10_000
 
 
-def success_rate(model, pool, grid_size, seed, max_goal_dist, max_steps,
-                 n_episodes, deterministic):
+def success_rate(model, pool, grid_size, seed, stage, n_episodes, deterministic):
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
-                       max_goal_dist=max_goal_dist, max_steps=max_steps)
+                       min_goal_dist=stage["min_goal_dist"],
+                       max_goal_dist=stage["max_goal_dist"],
+                       max_steps=stage["max_steps"],
+                       n_obstacle_slots=N_OBSTACLE_SLOTS)
     successes = 0
     for _ in range(n_episodes):
         obs, _ = env.reset()
@@ -61,32 +65,34 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--algo", choices=["sac", "ppo"], default="sac")
-    ap.add_argument("--grid_size", type=int, default=16)
+    ap.add_argument("--grid_size", type=int, default=GRID_SIZE)
     ap.add_argument("--seed", type=int, default=3,
                     help="must match the training run's seed, so the train "
                          "condition really is the pool the policy trained on")
-    ap.add_argument("--n_maps", type=int, default=24,
+    ap.add_argument("--n_maps", type=int, default=N_MAPS,
                     help="must match the training run's --n_maps")
     ap.add_argument("--n_episodes", type=int, default=40)
-    ap.add_argument("--max_goal_dist", type=float, default=None,
-                    help="None = full-random, the s5/final task")
-    ap.add_argument("--max_steps", type=int, default=320)
+    ap.add_argument("--stage", default="s5",
+                    help="which curriculum stage's difficulty to evaluate at")
     ap.add_argument("--out", default=None, help="write results as JSON here")
     args = ap.parse_args()
 
+    stage = next(s for s in STAGES if s["name"] == args.stage)
     train_pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps,
-                               seed=args.seed)
+                               seed=args.seed, n_obstacle_pairs=N_OBSTACLE_PAIRS)
     d4_pool = [t for g in train_pool for _, t in d4_orbit(g)]
     fresh_pool = make_map_pool(size=args.grid_size, n_maps=args.n_maps,
-                               seed=args.seed + FRESH_SEED_OFFSET)
+                               seed=args.seed + FRESH_SEED_OFFSET,
+                               n_obstacle_pairs=N_OBSTACLE_PAIRS)
 
     conditions = [("train", train_pool), ("d4_unseen", d4_pool),
                   ("fresh", fresh_pool)]
     model = (SAC if args.algo == "sac" else PPO).load(args.ckpt)
 
     print(f"G3 evaluation of {args.ckpt}")
-    print(f"{args.n_episodes} episodes/condition, "
-          f"max_goal_dist={args.max_goal_dist} max_steps={args.max_steps}\n")
+    print(f"{args.n_episodes} episodes/condition at stage {stage['name']} "
+          f"(dist {stage['min_goal_dist']}-{stage['max_goal_dist']}, "
+          f"max_steps={stage['max_steps']})\n")
     results = {}
     for name, pool in conditions:
         row = {}
@@ -95,7 +101,7 @@ def main():
             # shared, but fixed so re-running is reproducible
             row["deterministic" if det else "stochastic"] = success_rate(
                 model, pool, args.grid_size, args.seed + len(name),
-                args.max_goal_dist, args.max_steps, args.n_episodes, det)
+                stage, args.n_episodes, det)
         row["n_maps"] = len(pool)
         results[name] = row
         print(f"{name:10s} n_maps={len(pool):3d}  "
