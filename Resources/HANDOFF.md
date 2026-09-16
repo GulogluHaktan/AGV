@@ -313,3 +313,45 @@ engelleri hiç görmüyor. Engelden kaçınma öğrenmesi için sinyal de algı 
    bilgi içeriğini ve dolayısıyla simetri karşılaştırmasının anlamını geri getir.
 5. Çarpışma cezası + `/scan`'i köprüle (ego-merkezli engel algısı).
 6. Ancak bundan sonra baseline / augmentation / equivariant üç kolunu koş.
+
+## 13. Düzeltme uygulandı, ortam artık çözülebilir (2026-09-16)
+
+§12d'nin 1-3. maddeleri yapıldı (commit `44154ec`):
+
+- **Gözlem:** `goal_body` (hedef ofseti robot çerçevesine döndürülmüş) +
+  `heading` = (cos yaw, sin yaw) + `occupancy`. D4 dönüşümü altında temiz grup etkisi:
+  occupancy ve heading eşdeğişken, goal_body değişmez — makalenin simetri kollarının
+  ihtiyacı olan temsil bu.
+- **Poz kaynağı:** Vendor'lanan burger modeline `OdometryPublisher` eklendi, `/gt_odom`
+  olarak köprülendi. Tekerlek odometrisi `set_pose` teleport'unu hiç algılamıyordu; artık
+  gerçek dünya pozu okunuyor (teleport takibi 0.000 m / 0.00° doğrulukla test edildi) ve
+  kırılgan spawn-offset hilesi silindi. Reset'te başlangıç yaw'ı rastgeleleştiriliyor.
+- **Açısal hız tavanı 2.84 → 1.0 rad/s.** Komut `control_dt` boyunca tutulduğu için 2.84
+  adım başına 81° dönüş demekti; elle yazılmış kontrolcü hiçbir makul tolerans bandına
+  oturamıyor, 18 adımda sıfır ileri hareketle salınıyordu (+105° → −5° → −55°). 1.0 rad/s
+  ile adım başına 29°. Limitler artık env niteliği (`env.max_lin`, `env.max_ang`), böylece
+  kontrolcüler sabitleri kopyalamıyor.
+
+**KAPI TESTİ (`scripts/gate_test.py`) — bundan sonra her GPU harcamasından ÖNCE koşun:**
+
+| Aşama | Başarı | Ortalama adım / bütçe |
+|-------|--------|------------------------|
+| s1 | %100 | 15 / 80 |
+| s2 | %90 | 40 / 140 |
+| s3 | %100 | 72 / 200 |
+| s4 | %100 | 49 / 260 |
+| s5 | %80 | 124 / 320 |
+| **Genel** | **%94** | — |
+
+(Önceki deterministik politika: %0.) s2/s5'teki tek tek başarısızlıklar kontrolcünün engele
+sıkışması — kaçınma mantığı yok, bu yüzden geçme eşiği %80.
+
+Yan gözlem: `sample_goal_near` kutu-örneklemesi ve 16×16 ızgara sınırı nedeniyle aşamaların
+gerçek mesafe dağılımları birbirine çok yakın (s3 ort. 7.3 m, s4 5.9 m, s5 6.7 m) — yani
+curriculum merdiveni sanıldığı kadar ayrışmıyor. Eğitim koşusundan sonra gözden geçirilmeli.
+
+**SIRADAKİ KARAR (§12d madde 4) — kullanıcı onayı bekliyor:** harita hâlâ koşu başına tek ve
+sabit. Bunu episode başına değiştirmek makale için zorunlu (yoksa occupancy sabit girdi ve
+simetri karşılaştırması boş), ama hangi haritaların eğitim dağılımında olup hangilerinin G3
+genelleme testi için ayrı tutulacağı doğrudan makalenin iddiasını şekillendiren bir tasarım
+kararı. Bu karar verilmeden baseline koşusu başlatmak, sonradan yeniden koşmak anlamına gelir.
