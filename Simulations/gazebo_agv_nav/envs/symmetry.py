@@ -40,7 +40,12 @@ ALL_D4 = list(D4)
 
 
 def transform_grid(grid: np.ndarray, g: D4) -> np.ndarray:
-    """Apply a D4 element to a 2D occupancy grid (H, W)."""
+    """Apply a D4 element to a 2D occupancy grid (H, W).
+
+    Returns a contiguous array. `np.fliplr`/`np.rot90` hand back views with
+    negative strides, and `torch.from_numpy` rejects those outright -- so a
+    view would work its way through SB3 (which copies into its buffer) and then
+    fail wherever a tensor is built from the observation directly."""
     out = grid
     if g in (D4.MIRROR_X, D4.MIRROR_X_ROT90, D4.MIRROR_X_ROT180, D4.MIRROR_X_ROT270):
         out = np.fliplr(out)
@@ -54,7 +59,7 @@ def transform_grid(grid: np.ndarray, g: D4) -> np.ndarray:
         D4.ROT270: 3,
         D4.MIRROR_X_ROT270: 3,
     }[g]
-    return np.rot90(out, k=k)
+    return np.ascontiguousarray(np.rot90(out, k=k))
 
 
 def transform_point(xy: np.ndarray, g: D4, grid_size: int) -> np.ndarray:
