@@ -531,7 +531,7 @@ arasında bölmek bir makale için savunulamaz. Bu yüzden baseline sıfırdan y
 (`sac_baseline_v6`). v3/v4/v5 checkpoint'leri artık açılamaz; zaten tarihçe.
 
 **Ders:** ortam bağımlılıklarını eğitim başlamadan ÖNCE kesinleştirin. Yığın artık
-`requirements-pip.txt` ile sabitlendi ve `ENVIRONMENT.md` kurulum sırasını + numpy<2 pinini
+`requirements-pip.txt` ile sabitlendi ve `SETUP.md` kurulum sırasını + numpy<2 pinini
 açıklıyor. Yeni yığın altında kapı testi (%75 success + %25 wedged, no_progress %0) ve
 simetri testi (4808 kontrol) yeniden koşuldu ve geçti.
 
@@ -582,11 +582,11 @@ parçası; `extract_results.py` okuyabilir).
 
 Süreçler temizlendi: eğitim, gz sim ve köprüler kapalı, yetim süreç yok.
 
-**Yeni makinede nasıl devam edilir:** `Simulations/gazebo_agv_nav/ENVIRONMENT.md` içindeki
-"Running on a different machine" bölümü baştan sona anlatıyor — ortam kurulumu (escnn'i
+**Yeni makinede nasıl devam edilir:** `Simulations/gazebo_agv_nav/SETUP.md` — tek dosyada,
+yukarıdan aşağıya uygulanabilir kurulum ve çalıştırma kılavuzu. Ortam kurulumu (escnn'i
 eğitimden ÖNCE kurun, numpy<2 pini), dünyanın yeniden üretilmesi, GPU harcamadan önce
-koşulacak üç kontrol (kapı testi, simetri testi, eşdeğişkenlik testi) ve iki kolu ayrı ROS
-domain'lerinde eşzamanlı koşma.
+koşulacak üç kontrol, eğitim komutları, eşzamanlı koşma, sonuç çıkarma ve bilinen tuzaklar
+tablosu orada.
 
 **Üç kolun hepsi hazır ve doğrulanmış durumda:**
 - baseline — v4'te s1 %95/%95, s2 %70/%90 ile env düzeltmesini doğruladı
