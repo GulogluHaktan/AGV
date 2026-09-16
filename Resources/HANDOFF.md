@@ -442,3 +442,46 @@ aşamanın tamamındaki her başarısızlık sıkışma; episode bazında doğru
 **Şu an koşan:** `sac_baseline_v5` (baseline, SAC, bant curriculum, 24×24, 830k adım,
 ~6-7 saat). Ardından: `eval_g3.py` ile G3 değerlendirmesi, sonra `--arm
 symmetric_augmentation` ve `--arm equivariant`.
+
+## 15. 3. kol D4-değişmez DEĞİL — ve nedeni escnn değil (2026-09-16)
+
+`scripts/test_equivariance.py` yazıldı: kodlayıcının bir haritayı D4 görüntüsünden ayırt
+edip etmediğini ölçüyor. Sonuç, asimetrik haritalarda 8 grup elemanının tamamı için
+**bağıl hata ~%22-27**. Yani 3. kolun yapısal iddiası (ağ haritayı ve dönüşümünü ayırt
+edemez) mevcut kodda **yanlış**.
+
+**Bölüm 8.4'teki açıklama hatalıydı.** Orada "escnn'in D4-eşdeğişkenliği ayrık kernel
+yaklaşımı yüzünden tam sıfır değil, ~%10 sayısal hata var, literatürde kabul edilen bir
+durum" deniyordu. Ölçüm bunu çürütüyor — escnn burada makine hassasiyetinde tam. Kanıt
+deneyi: `group_pool` çıktısına **uzamsal ortalama havuzlama** eklendiğinde hata sekiz
+elemanın tamamında **tam 0.0000** oluyor; mevcut hâlde ~%20.
+
+**Gerçek neden:** `GroupPooling` özellikleri yalnızca *grup kanalı* etkisine göre değişmez
+kılıyor. Uzamsal H×W haritası hâlâ dönüşüyor. `equivariant_extractor.py` bu haritayı
+`flatten(1)` ile düzleştirip `nn.Linear`'a veriyor — döndürülmüş bir uzamsal harita farklı
+bir düzleştirme sırası ürettiği için çıktı değişiyor. Değişmezliği yok eden adım bu.
+
+Ek olarak testin ilk sürümü de yanıltıcıydı: `symmetric_corridor` haritaları ayna-simetrik
+olduğu için `mirror_x` haritayı kendisine götürüyor ve bedava 0.0000 alıyordu. Test artık
+asimetrik haritalar kullanıyor, böylece sekiz elemanın hepsi anlamlı.
+
+### 15b. Bu bir tasarım kararı gerektiriyor (KULLANICI ONAYI BEKLİYOR)
+
+Düzeltmenin üç yolu var ve makalenin yöntem iddiasını farklı şekilde etkiliyorlar:
+
+- **(A) Genel uzamsal havuzlama.** `head`'den önce H,W üzerinden ortalama al. Tam değişmezlik
+  (ölçüldü: 0.0000), tek satırlık değişiklik. Ama özellik vektörü "ortalama kalabalık" gibi
+  küresel bir özete dönüşür, uzamsal yerleşim tamamen kaybolur — politika haritayı engelden
+  kaçınmak için kullanamaz. Occupancy girdisinin faydası büyük ölçüde gider.
+- **(B) Ego-merkezli occupancy ızgarası.** Izgarayı politikaya vermeden robot çerçevesine
+  döndür. Dünya D4 dönüşümü ego-merkezli ızgarayı değiştirmez, yani değişmezlik kendiliğinden
+  gelir VE uzamsal yerleşim gövde çerçevesinde korunur ("solumdaki engel" solda kalır).
+  Navigasyon RL'inde standart yaklaşım. Uyarısı: ızgara zaten ego-merkezliyse düz bir CNN de
+  değişmez olurdu, dolayısıyla 3. kolun 1. kola karşı avantajı "değişmezlik"ten
+  "yönelimler arası ağırlık paylaşımı sayesinde örnek verimliliği"ne kayar — makalede bu
+  gerekçeyi yeniden kurmak gerekir.
+- **(C) Uçtan uca eşdeğişken politika.** Uzamsal haritayı aksiyon başlığına kadar eşdeğişken
+  taşı; aksiyon dağılımı da dönüşsün (aynalamada açısal hız işaret değiştirir). Makalenin
+  "E(2)-steerable politika ağı" ifadesine en sadık seçenek ve en güçlü katkı, ama SB3'ün
+  politika başlıkları bunu desteklemiyor, özel başlık yazmak gerekir (Bölüm 8.4'te bu
+  bilinçli olarak kapsam dışı bırakılmıştı).
