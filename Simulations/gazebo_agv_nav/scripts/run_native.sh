@@ -20,6 +20,33 @@ shift 3 2>/dev/null || true
 
 DOMAIN="${AGV_ROS_DOMAIN_ID:-17}"
 WS="$(cd "$(dirname "$0")/.." && pwd)"
+PIDFILE="${TMPDIR:-/tmp}/agv_sim_${DOMAIN}.pids"
+
+# Ayni domain'de ikinci bir kosuyu REDDET. Asagidaki sim_down cagrisi bayat bir
+# simulasyonu temizlemek icin var, ama bu yuzden ikinci bir run_native.sh
+# birincinin simulasyonunu kapatiyor ve iki egitim ayni log'a yaziyordu --
+# komutu iki kez yapistirmak sessizce ilk kosuyu olduruyordu.
+if [ -f "$PIDFILE" ]; then
+  for pid in $(cat "$PIDFILE" 2>/dev/null); do
+    if kill -0 "$pid" 2>/dev/null; then
+      cat >&2 <<MSG
+HATA: domain $DOMAIN icin bir simulasyon zaten canli (pid $pid).
+Ikinci bir kosu baslatmak birincinin simulasyonunu kapatir ve iki egitim ayni
+log dosyasina yazar. Ya baska bir domain kullanin:
+  AGV_ROS_DOMAIN_ID=23 $0 $ARM $ALGO <baska_prefix>
+ya da once durdurun:
+  $WS/scripts/sim_down.sh $DOMAIN
+MSG
+      exit 1
+    fi
+  done
+fi
+
+if pgrep -f "curriculum_train.py.*${PREFIX}\b" >/dev/null 2>&1; then
+  echo "HATA: '$PREFIX' onekiyle bir egitim zaten kosuyor. Farkli bir onek verin" >&2
+  echo "ya da o kosuyu durdurun (pgrep -af curriculum_train ile bulun)." >&2
+  exit 1
+fi
 
 "$WS/scripts/sim_down.sh" "$DOMAIN" >/dev/null 2>&1 || true
 "$WS/scripts/sim_up.sh" "$DOMAIN"

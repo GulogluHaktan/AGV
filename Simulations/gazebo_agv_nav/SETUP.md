@@ -204,6 +204,7 @@ ROS_DOMAIN_ID=42 GZ_PARTITION=evalpart python3 scripts/eval_g3.py --ckpt ...
 | `ModuleNotFoundError: numpy._core.numeric` | Checkpoint numpy 2.x ile kaydedilmiş, ortam numpy 1.26. Bölüm 3'e bakın; checkpoint kurtarılamaz. |
 | `Unknown compiler(s): gfortran` / `metadata-generation-failed` (py3nj) | Fortran derleyicisi yok. `micromamba install -y -n agv -c conda-forge gfortran`, sonra pip'i tekrar koşun. install.sh bunu kendi yapar. |
 | `sim time only advanced 0.000s` | Gazebo ölmüş. Eğitimi durdurun — o adımlar fizik almıyor ve bozuk geçiş kaydediyor. |
+| `HATA: domain 17 icin bir simulasyon zaten canli` | Aynı domain'de ikinci bir eğitim başlatmaya çalıştınız; betik reddediyor (yoksa birincinin simülasyonunu kapatır ve ikisi aynı log'a yazar). Farklı domain verin: `AGV_ROS_DOMAIN_ID=23 ./scripts/run_native.sh ...` |
 | `map needs N obstacle models but the world only has M` | Dünya ile `envs/curriculum.py` uyuşmuyor; Bölüm 4'e göre yeniden üretin. |
 | Eğitim `Using cpu device` diyor | torch GPU'yu görmüyor. `requirements-pip.txt`'teki torch CUDA derlemesini ve sürücüyü kontrol edin. |
 
