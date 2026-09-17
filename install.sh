@@ -19,7 +19,12 @@
 set -eo pipefail
 
 ROOT="/media/noron/DISK02/agv"
-REPO_URL="git@github.com:GulogluHaktan/AGV.git"
+# HTTPS varsayilan: egitim makinesinde yalnizca pull gerekiyor ve depo anonim
+# okunabilir, yani SSH anahtari kurmaya gerek yok. (SSH ile klonlama anahtarsiz
+# makinede "git@github.com: Permission denied" ile duser.) PUSH yapacaksaniz
+# --repo-url ile SSH adresini verin ya da sonradan
+# `git remote set-url origin git@github.com:...` calistirin.
+REPO_URL="https://github.com/GulogluHaktan/AGV.git"
 ENV_NAME="agv"
 KEEP_REPO=0
 NEED_GB=25
@@ -95,8 +100,8 @@ else
   else
     say "depo klonlaniyor -> $REPO"
     # once uzaktan; SSH anahtari yoksa yereldeki klondan kopyala (gecmis korunur)
-    if ! git clone "$REPO_URL" "$REPO" 2>/dev/null; then
-      echo "  uzaktan klonlama basarisiz (SSH anahtari?), yerel klondan kopyalaniyor"
+    if ! GIT_TERMINAL_PROMPT=0 git clone "$REPO_URL" "$REPO" 2>/dev/null; then
+      echo "  uzaktan klonlama basarisiz, yerel klondan kopyalaniyor"
       git clone "$SRC_REPO" "$REPO"
       git -C "$REPO" remote set-url origin "$REPO_URL"
     fi

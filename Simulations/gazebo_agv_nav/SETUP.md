@@ -15,7 +15,7 @@ Bölüm 1-3'ün tamamını tek komut yapar (depo + ROS2/Gazebo ortamı + Python 
 hepsini tek bir konuma kurar, sisteme hiçbir şey yazmaz, root istemez:
 
 ```bash
-git clone git@github.com:GulogluHaktan/AGV.git /tmp/AGV && cd /tmp/AGV
+git clone https://github.com/GulogluHaktan/AGV.git /tmp/AGV && cd /tmp/AGV
 ./install.sh                       # varsayilan: /media/noron/DISK02/agv
 ./install.sh --root /baska/yol     # baska konum
 ./install.sh --keep-repo           # depoyu tasima, sadece ortami kur
@@ -35,7 +35,7 @@ Aşağıdaki 1-4 numaralı bölümler elle kurmak ya da ne olduğunu görmek ist
 ## 1. Depoyu al
 
 ```bash
-git clone git@github.com:GulogluHaktan/AGV.git ~/Projects/AGV
+git clone https://github.com/GulogluHaktan/AGV.git ~/Projects/AGV
 cd ~/Projects/AGV/Simulations/gazebo_agv_nav
 ```
 
@@ -203,6 +203,7 @@ ROS_DOMAIN_ID=42 GZ_PARTITION=evalpart python3 scripts/eval_g3.py --ckpt ...
 | `CONDA_BUILD: unbound variable` | Betikte `set -u` var. RoboStack'in `activate.d` betikleri tanımsız değişkene bakıyor; bu yüzden betikler `set -eo pipefail` kullanıyor, `-u` eklemeyin. |
 | `ModuleNotFoundError: numpy._core.numeric` | Checkpoint numpy 2.x ile kaydedilmiş, ortam numpy 1.26. Bölüm 3'e bakın; checkpoint kurtarılamaz. |
 | `Unknown compiler(s): gfortran` / `metadata-generation-failed` (py3nj) | Fortran derleyicisi yok. `micromamba install -y -n agv -c conda-forge gfortran`, sonra pip'i tekrar koşun. install.sh bunu kendi yapar. |
+| `git@github.com: Permission denied (publickey)` | O makinede SSH anahtarı yok. Depo HTTPS ile anonim okunabilir: `git remote set-url origin https://github.com/GulogluHaktan/AGV.git`. Eğitim makinesinde yalnızca pull gerektiği için bu yeterli; push yapacaksanız SSH anahtarı ya da token gerekir. |
 | `sim time only advanced 0.000s` | Gazebo ölmüş. Eğitimi durdurun — o adımlar fizik almıyor ve bozuk geçiş kaydediyor. |
 | `HATA: domain 17 icin bir simulasyon zaten canli` | Aynı domain'de ikinci bir eğitim başlatmaya çalıştınız; betik reddediyor (yoksa birincinin simülasyonunu kapatır ve ikisi aynı log'a yazar). Farklı domain verin: `AGV_ROS_DOMAIN_ID=23 ./scripts/run_native.sh ...` |
 | `map needs N obstacle models but the world only has M` | Dünya ile `envs/curriculum.py` uyuşmuyor; Bölüm 4'e göre yeniden üretin. |
