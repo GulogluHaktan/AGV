@@ -90,7 +90,8 @@ class GazeboAGVEnv(gym.Env):
                  max_goal_dist: float | None = None, min_goal_dist: float = 0.0,
                  control_dt: float = 0.5,
                  collision_coef: float = 0.05, safe_dist: float = 1.0,
-                 n_obstacle_slots: int = 12, include_position: bool = True):
+                 n_obstacle_slots: int = 12, include_position: bool = True,
+                 reward_scale: float = 1.0):
         super().__init__()
         # `grid` may be a single occupancy grid or a pool of them. With a pool,
         # reset() picks one and physically rebuilds it in Gazebo by teleporting
@@ -143,6 +144,16 @@ class GazeboAGVEnv(gym.Env):
         # useless without it (see module docstring), so this is for ablations
         # only, not a supported training configuration
         self.include_position = include_position
+        # SAC maximises r + gamma*V - alpha*log(pi), so the reward's magnitude
+        # sets how much the task matters against the entropy bonus. At the
+        # default scale the per-step terms are tiny (time -0.01, progress at
+        # most +-0.11, and ~0 in expectation for an untrained policy) while
+        # alpha=0.02 on a 2-D Gaussian with std~0.6 is worth ~0.036 per step --
+        # the agent is paid more for being random than for making progress, and
+        # 11 of 12 runs collapsed into exactly that. Reward scale was the single
+        # most important hyperparameter in the original SAC paper for this
+        # reason.
+        self.reward_scale = reward_scale
         self._rng = np.random.default_rng(seed)
         self.last_odom_stamp = 0.0
         # interior obstacle cells of the active map, in world coords, for the
@@ -330,7 +341,7 @@ class GazeboAGVEnv(gym.Env):
             stop.header.stamp = self.node.get_clock().now().to_msg()
             self.cmd_pub.publish(stop)
 
-        return self._obs(), reward, reached, truncated, {
+        return self._obs(), reward * self.reward_scale, reached, truncated, {
             "dist_to_goal": dist_to_goal, "obstacle_dist": obstacle_dist}
 
     def _obstacle_dist(self) -> float:

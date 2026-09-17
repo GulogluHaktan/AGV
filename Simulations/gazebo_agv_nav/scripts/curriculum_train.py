@@ -63,13 +63,14 @@ class SuccessRateCallback(BaseCallback):
 
 
 def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05,
-             include_position=True):
+             include_position=True, reward_scale=1.0):
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                         min_goal_dist=stage["min_goal_dist"],
                         max_goal_dist=stage["max_goal_dist"],
                         max_steps=stage["max_steps"],
                         collision_coef=collision_coef,
                         include_position=include_position,
+                        reward_scale=reward_scale,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     if arm == "symmetric_augmentation":
         env = SymmetricAugmentationWrapper(env, seed=seed)
@@ -128,6 +129,9 @@ def main():
                          "can be locally optimal -- 0 disables it.")
     ap.add_argument("--ent_coef", default="0.02",
                     help="SAC entropy coefficient; 'auto' tunes it")
+    ap.add_argument("--reward_scale", type=float, default=1.0,
+                    help="multiplies the reward; sets the task's weight against "
+                         "SAC's entropy bonus")
     ap.add_argument("--no_position", action="store_true",
                     help="ablation: drop the position observation")
     args = ap.parse_args()
@@ -151,7 +155,8 @@ def main():
               f"steps={stage['max_steps']} timesteps={stage['timesteps']} ===", flush=True)
         env = make_env(pool, args.grid_size, args.seed, stage, args.arm,
                        collision_coef=args.collision_coef,
-                       include_position=not args.no_position)
+                       include_position=not args.no_position,
+                       reward_scale=args.reward_scale)
         policy_kwargs = {}
         if args.arm == "equivariant":
             from envs.equivariant_extractor import D4EquivariantExtractor
@@ -222,7 +227,8 @@ def main():
 
         sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
                                     stage, collision_coef=args.collision_coef,
-                                    include_position=not args.no_position)
+                                    include_position=not args.no_position,
+                       reward_scale=args.reward_scale)
         print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
               f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
         results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
@@ -231,7 +237,8 @@ def main():
     sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
                                  last, n_episodes=30,
                                  collision_coef=args.collision_coef,
-                       include_position=not args.no_position)
+                       include_position=not args.no_position,
+                       reward_scale=args.reward_scale)
     print(f"=== FINAL ({last['name']}) success_rate={sr_det:.2%} "
           f"stochastic={sr_stoch:.2%} ===", flush=True)
     results["final_full_random"] = {"deterministic": sr_det, "stochastic": sr_stoch}
