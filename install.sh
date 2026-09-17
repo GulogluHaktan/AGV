@@ -115,6 +115,18 @@ else
       ros-jazzy-ros-base ros-jazzy-ros-gz python=3.12 pip
 fi
 
+# gfortran: escnn -> py3nj kaynaktan derleniyor ve Fortran derleyicisi istiyor.
+# Yoksa pip 'Unknown compiler(s): gfortran ... metadata-generation-failed' ile
+# duser. Sisteme apt ile kurmak sudo isterdi; conda ortamina kurmak istemiyor ve
+# ortamin bin'i PATH'te sistemden once geldigi icin meson bunu buluyor.
+# Ayri adim olarak kosuyor ki var olan bir ortama da eklenebilsin (idempotent).
+say "Fortran derleyicisi kuruluyor (py3nj icin)"
+if "$MM" run -n "$ENV_NAME" bash -c 'command -v gfortran' >/dev/null 2>&1; then
+  echo "  gfortran zaten var: $("$MM" run -n "$ENV_NAME" bash -c 'command -v gfortran')"
+else
+  "$MM" install -y -n "$ENV_NAME" -c conda-forge gfortran
+fi
+
 # --------------------------------------------------------------- pip paketleri
 # TEK komutla: escnn -> lie-learn numpy<2 istiyor. Once numpy 2.x kurup sonra
 # escnn eklemek numpy'i sessizce dusurur ve numpy 2.x ile kaydedilmis butun
@@ -147,6 +159,7 @@ else:
 PY
 "$MM" run -n "$ENV_NAME" bash -c 'command -v gz >/dev/null && gz sim --versions 2>/dev/null | head -1 | sed "s/^/  gazebo /" || echo "  UYARI: gz bulunamadi"'
 "$MM" run -n "$ENV_NAME" bash -c 'ros2 pkg list 2>/dev/null | grep -q ros_gz_bridge && echo "  ros_gz_bridge: var" || echo "  UYARI: ros_gz_bridge yok"'
+"$MM" run -n "$ENV_NAME" bash -c 'command -v gfortran >/dev/null && echo "  gfortran: $(gfortran --version | head -1)" || echo "  UYARI: gfortran yok"'
 
 # ------------------------------------------------------------------- bitti
 cat <<EOF

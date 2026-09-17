@@ -55,6 +55,17 @@ Bu, ROS2 Jazzy + Gazebo Harmonic 8.x + `ros_gz_bridge` getirir. Birkaç GB iner.
 
 ## 3. Python paketleri — SIRA ÖNEMLİ
 
+Önce Fortran derleyicisi: `escnn` → `py3nj` kaynaktan derleniyor ve `gfortran`
+istiyor. Yoksa pip `Unknown compiler(s): gfortran ... metadata-generation-failed`
+ile düşer. Ortama kurmak sudo istemez ve ortamın `bin`'i PATH'te sistemden önce
+geldiği için meson bunu bulur:
+
+```bash
+~/bin/micromamba install -y -n agv -c conda-forge gfortran
+```
+
+Sonra paketler:
+
 ```bash
 cd ~/Projects/AGV/Simulations/gazebo_agv_nav
 ~/bin/micromamba run -n agv pip install -r requirements-pip.txt
@@ -191,6 +202,7 @@ ROS_DOMAIN_ID=42 GZ_PARTITION=evalpart python3 scripts/eval_g3.py --ckpt ...
 | `/odom` ya da `/gt_odom` hiç mesaj almıyor | `GZ_IP=127.0.0.1` eksik. GZ Transport'un keşfi bu olmadan kırılıyor; betikler ayarlıyor, elle koşuyorsanız siz ayarlayın. |
 | `CONDA_BUILD: unbound variable` | Betikte `set -u` var. RoboStack'in `activate.d` betikleri tanımsız değişkene bakıyor; bu yüzden betikler `set -eo pipefail` kullanıyor, `-u` eklemeyin. |
 | `ModuleNotFoundError: numpy._core.numeric` | Checkpoint numpy 2.x ile kaydedilmiş, ortam numpy 1.26. Bölüm 3'e bakın; checkpoint kurtarılamaz. |
+| `Unknown compiler(s): gfortran` / `metadata-generation-failed` (py3nj) | Fortran derleyicisi yok. `micromamba install -y -n agv -c conda-forge gfortran`, sonra pip'i tekrar koşun. install.sh bunu kendi yapar. |
 | `sim time only advanced 0.000s` | Gazebo ölmüş. Eğitimi durdurun — o adımlar fizik almıyor ve bozuk geçiş kaydediyor. |
 | `map needs N obstacle models but the world only has M` | Dünya ile `envs/curriculum.py` uyuşmuyor; Bölüm 4'e göre yeniden üretin. |
 | Eğitim `Using cpu device` diyor | torch GPU'yu görmüyor. `requirements-pip.txt`'teki torch CUDA derlemesini ve sürücüyü kontrol edin. |
