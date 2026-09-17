@@ -144,6 +144,17 @@ Tek kol:
 
 Betik simülasyonu kendi başlatır/kapatır, log'u `<prefix>.log`'a yazar, her aşama
 sonunda `<prefix>_sX.zip` checkpoint'i kaydeder ve bitince `<prefix>.done` bırakır.
+Log'un ilk satırı `=== KOD: <commit>` ile hangi kodun koştuğunu damgalar.
+
+**Başlatmadan önce kodun güncel olduğunu doğrulayın.** `git pull`'un sessizce
+düşmesi bir kez 8 saatlik koşunun bayat kodla gitmesine yol açtı:
+
+```bash
+git pull && git log --oneline -1
+```
+
+Testlerin beklenen kontrol sayıları da bayat kodu ele verir: simetri testi
+**6408 kontrol** demeli (4808 diyorsa `position` gözlemi yok, kod eski).
 
 İki kolu eşzamanlı koşmak için ikincisine farklı bir ROS domain verin (aksi hâlde iki
 simülasyon birbirinin topic'lerini görür):

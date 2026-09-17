@@ -56,6 +56,18 @@ trap cleanup EXIT
 # shellcheck source=scripts/_activate.sh
 . "$(dirname "$0")/_activate.sh"
 
+# Hangi kodun bu sonuclari urettigini log'a damgala. Bir kez sessizce bayat
+# kodla 8 saatlik kosu baslatildi: `git pull` SSH hatasiyla dusmustu ama
+# sonraki satirlar calismaya devam etti, ve kosu eski gozlem uzayiyla gitti.
+# Damga hem o durumu gorunur kilar hem de her sonucun kaynagini sabitler.
+GIT_DESC="$(git -C "$WS" describe --always --dirty 2>/dev/null || echo bilinmiyor)"
+GIT_SUBJ="$(git -C "$WS" log -1 --pretty=%s 2>/dev/null || echo '')"
+echo "=== KOD: $GIT_DESC  ($GIT_SUBJ)"
+case "$GIT_DESC" in
+  *-dirty) echo "=== UYARI: calisma agaci kirli -- sonuclar commit'lenmemis "\
+"degisiklikler icerir, tekrar uretilemez" ;;
+esac
+
 export AGV_WORKSPACE="$WS"
 export GZ_IP=127.0.0.1                     # GZ Transport discovery fix
 export ROS_DOMAIN_ID="$DOMAIN"
