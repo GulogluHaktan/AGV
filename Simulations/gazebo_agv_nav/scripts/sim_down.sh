@@ -12,6 +12,14 @@
 # physics, which is silent data corruption rather than an obvious failure.
 set -eo pipefail
 
+# env.local.sh TMPDIR'i tasiyabilir (kurulum her seyi tek diskte tutmak icin
+# oraya yaziyor). sim_up.sh bunu _activate.sh uzerinden aliyor; bu betik conda
+# ortamina ihtiyac duymadigi icin dosyayi dogrudan okuyor -- yoksa iki betik
+# farkli dizinlere bakar ve pid dosyasi bulunamaz.
+_WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[ -f "$_WS/env.local.sh" ] && . "$_WS/env.local.sh"
+
 LOGDIR="${TMPDIR:-/tmp}"
 
 stop_domain() {

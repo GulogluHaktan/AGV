@@ -141,12 +141,17 @@ say "Python paketleri kuruluyor (torch/CUDA dahil, ~3GB iner)"
 
 # ------------------------------------------------------------- env.local.sh
 say "env.local.sh yaziliyor"
+mkdir -p "$ROOT/tmp"
 cat > "$WS/env.local.sh" <<EOF
 # install.sh tarafindan uretildi -- bu makineye ozeldir, git'e girmez.
-# scripts/_activate.sh bunu okur, boylece ortam nerede olursa olsun bulunur.
+# scripts/_activate.sh ve sim_down.sh bunu okur, boylece ortam ve gecici
+# dosyalar nerede olursa olsun bulunur.
 export MAMBA_ROOT_PREFIX="$MAMBA_ROOT_PREFIX"
 export MICROMAMBA_BIN="$MM"
 export AGV_ENV_NAME="$ENV_NAME"
+# gz/bridge log'lari ve pid dosyalari da kurulum kokunun altinda kalsin,
+# boylece sistem diskine hicbir sey yazilmaz
+export TMPDIR="$ROOT/tmp"
 EOF
 echo "  $WS/env.local.sh"
 
