@@ -90,7 +90,7 @@ class GazeboAGVEnv(gym.Env):
                  max_goal_dist: float | None = None, min_goal_dist: float = 0.0,
                  control_dt: float = 0.5,
                  collision_coef: float = 0.05, safe_dist: float = 1.0,
-                 n_obstacle_slots: int = 12):
+                 n_obstacle_slots: int = 12, include_position: bool = True):
         super().__init__()
         # `grid` may be a single occupancy grid or a pool of them. With a pool,
         # reset() picks one and physically rebuilds it in Gazebo by teleporting
@@ -139,6 +139,10 @@ class GazeboAGVEnv(gym.Env):
         self.safe_dist = safe_dist
         # how many obs_* models the loaded world provides
         self.n_obstacle_slots = n_obstacle_slots
+        # position can be dropped to A/B its effect on learning; the map is
+        # useless without it (see module docstring), so this is for ablations
+        # only, not a supported training configuration
+        self.include_position = include_position
         self._rng = np.random.default_rng(seed)
         self.last_odom_stamp = 0.0
         # interior obstacle cells of the active map, in world coords, for the
@@ -150,8 +154,10 @@ class GazeboAGVEnv(gym.Env):
             "occupancy": spaces.Box(0, 1, shape=(grid_size, grid_size), dtype=np.uint8),
             "goal_body": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
             "heading": spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
-            "position": spaces.Box(-2.0, 2.0, shape=(2,), dtype=np.float32),
         })
+        if include_position:
+            self.observation_space["position"] = spaces.Box(
+                -2.0, 2.0, shape=(2,), dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
         rclpy.init(args=None)
@@ -348,10 +354,12 @@ class GazeboAGVEnv(gym.Env):
         # point, so this transforms like a direction (see module docstring)
         centre = (self.grid_size - 1) / 2.0
         position = ((self._pose - centre) / (self.grid_size / 2.0)).astype(np.float32)
-        return {"occupancy": self.grid.copy(),
-                "goal_body": goal_body,
-                "heading": heading,
-                "position": position}
+        obs = {"occupancy": self.grid.copy(),
+               "goal_body": goal_body,
+               "heading": heading}
+        if self.include_position:
+            obs["position"] = position
+        return obs
 
     def close(self):
         self.node.destroy_node()

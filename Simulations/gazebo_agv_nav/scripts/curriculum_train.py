@@ -62,12 +62,14 @@ class SuccessRateCallback(BaseCallback):
 
 
 
-def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05):
+def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05,
+             include_position=True):
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                         min_goal_dist=stage["min_goal_dist"],
                         max_goal_dist=stage["max_goal_dist"],
                         max_steps=stage["max_steps"],
                         collision_coef=collision_coef,
+                        include_position=include_position,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     if arm == "symmetric_augmentation":
         env = SymmetricAugmentationWrapper(env, seed=seed)
@@ -75,7 +77,7 @@ def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05):
 
 
 def evaluate(model, pool, grid_size, seed, stage, n_episodes=20,
-             collision_coef=0.05):
+             collision_coef=0.05, include_position=True):
     """Returns (deterministic_sr, stochastic_sr). Both are reported because the
     deterministic mean action lags well behind the stochastic behavior early in
     training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
@@ -87,6 +89,7 @@ def evaluate(model, pool, grid_size, seed, stage, n_episodes=20,
                         max_goal_dist=stage["max_goal_dist"],
                         max_steps=stage["max_steps"],
                         collision_coef=collision_coef,
+                        include_position=include_position,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     rates = []
     for deterministic in (True, False):
@@ -125,6 +128,8 @@ def main():
                          "can be locally optimal -- 0 disables it.")
     ap.add_argument("--ent_coef", default="0.02",
                     help="SAC entropy coefficient; 'auto' tunes it")
+    ap.add_argument("--no_position", action="store_true",
+                    help="ablation: drop the position observation")
     args = ap.parse_args()
     Algo = SAC if args.algo == "sac" else PPO
 
@@ -145,7 +150,8 @@ def main():
         print(f"=== STAGE {stage['name']}: dist {stage['min_goal_dist']}-{stage['max_goal_dist']} "
               f"steps={stage['max_steps']} timesteps={stage['timesteps']} ===", flush=True)
         env = make_env(pool, args.grid_size, args.seed, stage, args.arm,
-                       collision_coef=args.collision_coef)
+                       collision_coef=args.collision_coef,
+                       include_position=not args.no_position)
         policy_kwargs = {}
         if args.arm == "equivariant":
             from envs.equivariant_extractor import D4EquivariantExtractor
@@ -215,7 +221,8 @@ def main():
         env.close()
 
         sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
-                                    stage, collision_coef=args.collision_coef)
+                                    stage, collision_coef=args.collision_coef,
+                                    include_position=not args.no_position)
         print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
               f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
         results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
@@ -223,7 +230,8 @@ def main():
     last = STAGES[min(args.end_stage, len(STAGES)) - 1]
     sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
                                  last, n_episodes=30,
-                                 collision_coef=args.collision_coef)
+                                 collision_coef=args.collision_coef,
+                       include_position=not args.no_position)
     print(f"=== FINAL ({last['name']}) success_rate={sr_det:.2%} "
           f"stochastic={sr_stoch:.2%} ===", flush=True)
     results["final_full_random"] = {"deterministic": sr_det, "stochastic": sr_stoch}
