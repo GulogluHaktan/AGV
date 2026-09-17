@@ -46,12 +46,13 @@ from envs.equivariant_extractor import D4EquivariantExtractor
 ERROR_BUDGET = 0.02
 
 
-def make_obs(grid, yaw, goal_body):
+def make_obs(grid, yaw, goal_body, position):
     c, s = math.cos(yaw), math.sin(yaw)
     return {
         "occupancy": torch.from_numpy(np.ascontiguousarray(grid)).float()[None],
         "heading": torch.tensor([[c, s]], dtype=torch.float32),
         "goal_body": torch.tensor([goal_body], dtype=torch.float32),
+        "position": torch.tensor([position], dtype=torch.float32),
     }
 
 
@@ -67,6 +68,7 @@ def main():
         "occupancy": spaces.Box(0, 1, shape=(args.grid_size, args.grid_size), dtype=np.uint8),
         "goal_body": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
         "heading": spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
+        "position": spaces.Box(-2.0, 2.0, shape=(2,), dtype=np.float32),
     })
     ex = D4EquivariantExtractor(obs_space)
     ex.eval()  # freeze BatchNorm: in train mode it renormalizes per batch
@@ -82,8 +84,9 @@ def main():
                                        rng=np.random.default_rng(args.seed + i))
             yaw = float(rng.uniform(-np.pi, np.pi))
             goal_body = rng.uniform(-0.5, 0.5, size=2).tolist()
+            position = rng.uniform(-0.8, 0.8, size=2).tolist()
 
-            base = ex.raw_features(make_obs(grid, yaw, goal_body))
+            base = ex.raw_features(make_obs(grid, yaw, goal_body, position))
             base_norm = float(torch.linalg.norm(base))
 
             for g in ALL_D4:
@@ -92,8 +95,10 @@ def main():
                     np.array([math.cos(yaw), math.sin(yaw)]), g)
                 yaw_t = math.atan2(heading_t[1], heading_t[0])
                 gb_t = transform_goal_body(np.asarray(goal_body), g)
+                pos_t = transform_direction(np.asarray(position), g)
                 got = ex.raw_features(
-                    make_obs(transform_grid(grid, g), yaw_t, gb_t.tolist()))
+                    make_obs(transform_grid(grid, g), yaw_t, gb_t.tolist(),
+                             pos_t.tolist()))
 
                 # expected: even half unchanged, odd half negated under mirror
                 want = base.clone()

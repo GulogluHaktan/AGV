@@ -10,7 +10,21 @@ action depends on; SAC correctly converged to a zero-mean, max-variance
 
   goal_body  (2,) goal offset rotated into the robot frame -> directly actionable
   heading    (2,) (cos yaw, sin yaw) -> relates the world-frame grid to the body
+  position   (2,) where the robot is on the map, relative to the grid centre
   occupancy  (N,N) the map
+
+`position` is what makes `occupancy` usable at all. Without it the map is a
+constant input for the whole episode and says nothing about where the obstacles
+are RELATIVE TO THE ROBOT, so the policy cannot route around anything -- it has
+exactly the information a map-blind controller has. That capped the achievable
+success at the map-blind level and, worse, left both symmetry arms operating on
+an input carrying no actionable information, which would have made the paper's
+central comparison vacuous.
+
+Expressed relative to the grid centre because that is the fixed point of the D4
+action: a centred position transforms by the same linear map as a direction
+(a mirror negates it, a rotation sends (dx,dy) to (dy,-dx)), so it slots into
+the existing group machinery instead of needing an affine special case.
 
 Under a D4 transform of the world this is a clean group action, which is what
 the paper's symmetry arms need: occupancy and heading transform (equivariant),
@@ -136,6 +150,7 @@ class GazeboAGVEnv(gym.Env):
             "occupancy": spaces.Box(0, 1, shape=(grid_size, grid_size), dtype=np.uint8),
             "goal_body": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
             "heading": spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32),
+            "position": spaces.Box(-2.0, 2.0, shape=(2,), dtype=np.float32),
         })
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
 
@@ -329,9 +344,14 @@ class GazeboAGVEnv(gym.Env):
         goal_body = np.array([c * d[0] + s * d[1],
                               -s * d[0] + c * d[1]], dtype=np.float32)
         heading = np.array([c, s], dtype=np.float32)
+        # centred and scaled to roughly [-1, 1]; the centre is the D4 fixed
+        # point, so this transforms like a direction (see module docstring)
+        centre = (self.grid_size - 1) / 2.0
+        position = ((self._pose - centre) / (self.grid_size / 2.0)).astype(np.float32)
         return {"occupancy": self.grid.copy(),
                 "goal_body": goal_body,
-                "heading": heading}
+                "heading": heading,
+                "position": position}
 
     def close(self):
         self.node.destroy_node()

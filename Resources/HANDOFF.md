@@ -598,3 +598,60 @@ adımın 500k'sı s4+s5'te. Karar için yeni monoton merdivende s3 sonuna kadar 
 eğri gerekiyor; v4'ün düz görünen üst aşamaları ESKİ dejenere merdivenden geliyor, o yüzden
 kanıt sayılmaz. Yeni makinede baseline s3'ü bitirdiğinde `extract_results.py` ile aşama-içi
 iyileşmeye bakın: aşama ilk çeyrekten son çeyreğe anlamlı ilerlemiyorsa o bütçe kısaltılabilir.
+
+## 19. v7 çöküşü: aşama geçişlerinde replay buffer atılıyordu + occupancy ölü girdiydi (2026-09-17)
+
+`sac_baseline_v7` (yeni makine, 29 fps) s1'de %90'a çıktı, s2'de bozuldu, s3 ve s4 **%0**
+ile bitti. Kritik eşik: kapı testinde haritayı hiç kullanmayan kontrolcü s4'te %70 alıyor,
+yani politika harita-kör bir açgözlü kontrolcünün bile çok altına düşmüş — "görev zor"
+değil, "politika bozuldu".
+
+Teşhis verisi iki hipotezi eledi: `critic_loss` 0.03-0.16 (Q ıraksaması YOK), aktör kaybı
+normal, aksiyonlar aktif ama yanlış (bir noktada `linear mean=-0.56`, yani geri geri
+gidiyor — v3'teki sıfır-ortalama "yerinde dur" çöküşü DEĞİL). Çarpışma cezası da elendi:
+ödül bileşenleri ölçüldü, ceza en kötü -3.6 iken ilerleme terimi +10 civarı.
+
+### 19a. Asıl sebep: `Algo.load()` boş buffer veriyor
+
+Her aşama geçişi `Algo.load(ckpt, env=env)` çağırıyordu. Bu ağırlıkları geri yüklüyor ama
+**replay buffer'ı boş** bırakıyor (kodda `save_replay_buffer`/`load_replay_buffer` hiç yoktu).
+Üstüne `reset_num_timesteps=False` olduğu için `learning_starts=1000` eşiği etkisiz kalıyor:
+`num_timesteps` zaten 60 binin üzerinde olduğundan SB3 yeni aşamanın **ilk adımından**
+itibaren gradyan atıyor ve 256'lık batch'leri bir tutam geçişten çekiyor. Her sınır ağı
+neredeyse-özdeş veriyle dövüyor, görev zorlaştıkça hasar büyüyor. s1'in sağlam kalmasının
+sebebi: orada model sıfırdan kurulduğu için sayaç sıfırlanıyor ve `learning_starts` işliyor.
+
+Bu, **Bölüm 6.7'de "primacy bias / UTD oranı" diye yorumlanan eski gözlemin de gerçek
+sebebi**; `gradient_steps` suçlu değildi.
+
+**Düzeltme (commit `b4c7f9a`):** artık tek model aşamalar boyunca yaşıyor, sadece ortam
+değişiyor (`model.set_env`); buffer, kritik ve optimizer durumu korunuyor. Buffer ayrıca her
+checkpoint'in yanına kaydediliyor ki `--resume_from` da geri yükleyebilsin; buffer'sız bir
+resume artık uyarı basıyor. Aşama sınırında doğrulandı ("continuing with ... 1200 transitions").
+
+### 19b. Aynı teşhiste çıkan ikinci sorun: occupancy ızgarası kullanılamıyordu
+
+Gözlem `{occupancy, goal_body, heading}` idi — **robotun konumu yoktu**. Harita bir episode
+boyunca sabit bir girdi olduğu için, engellerin robota göre nerede olduğu hakkında hiçbir şey
+söylemiyor. Yani ajan haritayı engelden kaçınmak için kullanamıyordu; tam olarak harita-kör
+kontrolcü kadar bilgiye sahipti.
+
+Bu yalnızca bir performans tavanı değil: 2. ve 3. kol tam olarak bu girdi üzerinde çalışıyor,
+dolayısıyla **makalenin ana karşılaştırması ölçülebilir bir şey ölçmüyordu**.
+
+**Düzeltme:** gözleme `position` eklendi — ızgara merkezine göre, `grid_size/2` ile normalize.
+Merkez D4 etkisinin sabit noktası olduğu için merkezlenmiş konum tam olarak bir yön gibi
+dönüşüyor (aynalama negatifliyor, dönme `(dx,dy)→(dy,-dx)`), yani afin bir özel duruma gerek
+kalmadan mevcut grup makinesine giriyor. Augmentation wrapper'ı `transform_direction` ile
+dönüştürüyor; 3. kol aynı okuma şemasını uyguluyor (`position·h` değişmez, `position·h_perp`
+ayna-tek, `|position|` değişmez).
+
+**Doğrulama:** simetri testi 6408 kontrol PASS; eşdeğişkenlik testi sekiz D4 elemanında
+0.00000 PASS; kapı testi %75 success / %25 wedged / no_progress %0 / budget %0 PASS; üç kol
+da SB3 ile ayrı süreçlerde eğitim yaptı.
+
+**Kalan bilinen sınır:** konum artık mevcut ama baseline'ın (düz CNN + MLP) haritayı konumla
+ilişkilendirmeyi öğrenmesi örnek-verimsiz olabilir. Daha güçlü bir alternatif, 3. kol için
+eşdeğişken özellik alanını robotun hücresinde **örneklemek** (uzamsal ortalama almak yerine):
+o zaman özellikler yerel ve doğrudan eyleme dönüştürülebilir olur, eşdeğişkenlik de korunur.
+İlk tam koşu sonuçları geldikten sonra değerlendirilmeli.

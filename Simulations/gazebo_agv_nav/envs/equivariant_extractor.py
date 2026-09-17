@@ -120,10 +120,11 @@ class D4EquivariantExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim=grid_feat_dim)
         self.encoder = D4EquivariantGridEncoder(n_vec=n_vec, n_inv=n_inv)
         self.n_vec = n_vec
-        # even: v.h (n_vec), invariants (n_inv), goal forward, |goal|
-        # odd : v.h_perp (n_vec), goal left
-        self.n_even = n_vec + n_inv + 2
-        self.n_odd = n_vec + 1
+        # even: v.h (n_vec), invariants (n_inv), goal forward, |goal|,
+        #       position.h, |position|
+        # odd : v.h_perp (n_vec), goal left, position.h_perp
+        self.n_even = n_vec + n_inv + 4
+        self.n_odd = n_vec + 2
         self.mlp = nn.Sequential(
             nn.Linear(self.n_even + self.n_odd, grid_feat_dim), nn.ReLU())
 
@@ -135,6 +136,7 @@ class D4EquivariantExtractor(BaseFeaturesExtractor):
 
         heading = observations["heading"].float()              # (B,2) world frame
         goal_body = observations["goal_body"].float()          # (B,2) robot frame
+        position = observations["position"].float()            # (B,2) world, centred
         c, s = heading[:, 0], heading[:, 1]
         # world-frame goal offset: R(yaw) @ goal_body
         gx = c * goal_body[:, 0] - s * goal_body[:, 1]
@@ -147,8 +149,16 @@ class D4EquivariantExtractor(BaseFeaturesExtractor):
         along = torch.einsum("bnd,bd->bn", vec, h)             # even
         across = torch.einsum("bnd,bd->bn", vec, h_perp)       # odd
 
-        even = torch.cat([along, inv, goal_body[:, :1], goal_norm], dim=1)
-        odd = torch.cat([across, goal_body[:, 1:2]], dim=1)
+        # position is a world-frame vector (centred on the D4 fixed point), so
+        # the same readout applies: along-heading is invariant, across-heading
+        # is mirror-odd, and the distance from centre is invariant
+        pos_along = torch.einsum("bd,bd->b", position, h).unsqueeze(1)
+        pos_across = torch.einsum("bd,bd->b", position, h_perp).unsqueeze(1)
+        pos_norm = torch.linalg.norm(position, dim=1, keepdim=True)
+
+        even = torch.cat([along, inv, goal_body[:, :1], goal_norm,
+                          pos_along, pos_norm], dim=1)
+        odd = torch.cat([across, goal_body[:, 1:2], pos_across], dim=1)
         return torch.cat([even, odd], dim=1)
 
     def forward(self, observations: dict) -> torch.Tensor:

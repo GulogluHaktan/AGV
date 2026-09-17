@@ -33,12 +33,15 @@ TOL = 1e-4
 def build_obs(grid, pose, yaw, goal):
     """The observation as gazebo_agv_env._obs builds it."""
     grid_size = grid.shape[0]
-    d = (np.asarray(goal, dtype=np.float64) - np.asarray(pose, dtype=np.float64)) / grid_size
+    pose = np.asarray(pose, dtype=np.float64)
+    d = (np.asarray(goal, dtype=np.float64) - pose) / grid_size
     c, s = math.cos(yaw), math.sin(yaw)
+    centre = (grid_size - 1) / 2.0
     return {
         "occupancy": grid,
         "goal_body": np.array([c * d[0] + s * d[1], -s * d[0] + c * d[1]]),
         "heading": np.array([c, s]),
+        "position": (pose - centre) / (grid_size / 2.0),
     }
 
 
@@ -48,6 +51,7 @@ def transform_obs(obs, g):
         "occupancy": transform_grid(obs["occupancy"], g),
         "goal_body": transform_goal_body(obs["goal_body"], g),
         "heading": transform_direction(obs["heading"], g),
+        "position": transform_direction(obs["position"], g),
     }
 
 
@@ -76,7 +80,7 @@ def main():
             # route 2: observe, then transform the observation
             claimed = transform_obs(obs, g)
 
-            for key in ("occupancy", "goal_body", "heading"):
+            for key in ("occupancy", "goal_body", "heading", "position"):
                 err = float(np.max(np.abs(
                     np.asarray(measured[key], dtype=np.float64)
                     - np.asarray(claimed[key], dtype=np.float64))))

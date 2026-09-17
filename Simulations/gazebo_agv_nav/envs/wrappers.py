@@ -52,4 +52,7 @@ class SymmetricAugmentationWrapper(gym.Wrapper):
             "occupancy": transform_grid(obs["occupancy"], self._g),
             "goal_body": transform_goal_body(obs["goal_body"], self._g),
             "heading": transform_direction(obs["heading"], self._g),
+            # centred position transforms like a direction, which is why the
+            # env reports it relative to the grid centre
+            "position": transform_direction(obs["position"], self._g),
         }
