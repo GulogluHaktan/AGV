@@ -62,11 +62,6 @@ trap cleanup EXIT
 # Damga hem o durumu gorunur kilar hem de her sonucun kaynagini sabitler.
 GIT_DESC="$(git -C "$WS" describe --always --dirty 2>/dev/null || echo bilinmiyor)"
 GIT_SUBJ="$(git -C "$WS" log -1 --pretty=%s 2>/dev/null || echo '')"
-echo "=== KOD: $GIT_DESC  ($GIT_SUBJ)"
-case "$GIT_DESC" in
-  *-dirty) echo "=== UYARI: calisma agaci kirli -- sonuclar commit'lenmemis "\
-"degisiklikler icerir, tekrar uretilemez" ;;
-esac
 
 export AGV_WORKSPACE="$WS"
 export GZ_IP=127.0.0.1                     # GZ Transport discovery fix
@@ -74,6 +69,16 @@ export ROS_DOMAIN_ID="$DOMAIN"
 export GZ_SIM_RESOURCE_PATH="$WS/models"   # turtlebot3_common meshes
 cd "$WS"
 
-python3 scripts/curriculum_train.py --arm "$ARM" --algo "$ALGO" \
-  --out_prefix "$WS/$PREFIX" "$@" 2>&1 | tee "$WS/${PREFIX}.log"
+# Damga tee'nin ICINDE basiliyor: onceki hali betigin stdout'una yaziyordu,
+# yani egitim log'una degil yanindaki cikti dosyasina gidiyordu -- ve log
+# analiz edilen dosya oldugu icin damganin orada olmasi gerekiyor.
+{
+  echo "=== KOD: $GIT_DESC  ($GIT_SUBJ)"
+  case "$GIT_DESC" in
+    *-dirty) echo "=== UYARI: calisma agaci kirli -- sonuclar commit'lenmemis"\
+" degisiklikler icerir, tekrar uretilemez" ;;
+  esac
+  python3 scripts/curriculum_train.py --arm "$ARM" --algo "$ALGO" \
+    --out_prefix "$WS/$PREFIX" "$@" 2>&1
+} | tee "$WS/${PREFIX}.log"
 echo DONE > "$WS/${PREFIX}.done"

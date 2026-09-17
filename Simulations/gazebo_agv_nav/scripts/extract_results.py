@@ -23,6 +23,7 @@ counter's value when the stage began.
 import argparse, csv, json, os, re, sys
 
 RE_STAGE = re.compile(r"^=== STAGE (\w+): dist ([\d.]+)-(\S+) steps=(\d+) timesteps=(\d+) ===")
+RE_CODE = re.compile(r"^=== KOD: (\S+)")
 RE_STAGE_OLD = re.compile(r"^=== STAGE (\w+): dist<=(\S+) steps=(\d+) timesteps=(\d+) ===")
 RE_DONE = re.compile(r"^=== STAGE (\w+) DONE: success_rate=([\d.]+)%(?: stochastic=([\d.]+)%)?")
 RE_FINAL = re.compile(r"^=== FINAL.*?success_rate=([\d.]+)%(?: stochastic=([\d.]+)%)?")
@@ -35,6 +36,7 @@ RE_EPLEN = re.compile(r"^\|\s+ep_len_mean\s+\|\s+(\S+)")
 def parse(path):
     curve, stage_evals = [], []
     stage = None
+    code = None          # which commit produced this run
     stage_start_t = None      # counter value when the current stage began
     last_t = 0
     ep_rew = ep_len = None
@@ -43,6 +45,11 @@ def parse(path):
     with open(path) as fh:
         for line in fh:
             line = line.rstrip("\n")
+
+            m = RE_CODE.match(line)
+            if m:
+                code = m.group(1)
+                continue
 
             m = RE_STAGE.match(line) or RE_STAGE_OLD.match(line)
             if m:
@@ -97,7 +104,7 @@ def parse(path):
                                         if m.group(2) else None),
                 }
 
-    return curve, stage_evals, final
+    return curve, stage_evals, final, code
 
 
 def main():
@@ -110,7 +117,7 @@ def main():
         sys.exit(f"no such log: {args.log}")
     prefix = args.out or os.path.splitext(args.log)[0]
 
-    curve, stage_evals, final = parse(args.log)
+    curve, stage_evals, final, code = parse(args.log)
     if not curve:
         sys.exit(f"no success-rate lines found in {args.log} -- wrong file?")
 
@@ -118,11 +125,12 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(curve[0].keys()))
         w.writeheader()
         w.writerows(curve)
-    summary = {"log": args.log, "stage_evals": stage_evals, "final": final,
-               "curve_points": len(curve)}
+    summary = {"log": args.log, "code": code, "stage_evals": stage_evals,
+               "final": final, "curve_points": len(curve)}
     with open(f"{prefix}_summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
+    print(f"code: {code or 'log has no === KOD: stamp (pre-stamp run?)'}")
     print(f"{len(curve)} curve points -> {prefix}_curve.csv")
     print(f"stage evals + final -> {prefix}_summary.json\n")
     print(f"{'stage':6s} {'points':>6s} {'peak train':>11s} "
