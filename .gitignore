@@ -1,3 +1,17 @@
 __pycache__/
 *.pyc
 env.local.sh
+
+# Kosu ciktilari: egitim log'lari, checkpoint'ler, replay buffer'lar, cikarilan
+# sonuclar. Bunlar uretilen veri, kaynak degil. Depoda takipli olmalari iki
+# soruna yol acti: 36 MB'lik eski cikti tasiniyordu ve bir kosu log'u yeniden
+# kosuldugunda degistigi icin `git describe --dirty` surekli "kirli" diyordu --
+# yani run_native.sh'in kod damgasi anlamsizlasiyordu. Sonuclar HANDOFF.md'de
+# ve cikarilan tablolarda kayitli.
+*.log
+*.zip
+*.done
+*.out
+*_buffer.pkl
+*_curve.csv
+*_summary.json
