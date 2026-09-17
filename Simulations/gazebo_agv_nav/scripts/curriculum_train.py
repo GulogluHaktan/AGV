@@ -62,18 +62,20 @@ class SuccessRateCallback(BaseCallback):
 
 
 
-def make_env(pool, grid_size, seed, stage, arm):
+def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05):
     env = GazeboAGVEnv(grid=pool, grid_size=grid_size, seed=seed,
                         min_goal_dist=stage["min_goal_dist"],
                         max_goal_dist=stage["max_goal_dist"],
                         max_steps=stage["max_steps"],
+                        collision_coef=collision_coef,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     if arm == "symmetric_augmentation":
         env = SymmetricAugmentationWrapper(env, seed=seed)
     return env
 
 
-def evaluate(model, pool, grid_size, seed, stage, n_episodes=20):
+def evaluate(model, pool, grid_size, seed, stage, n_episodes=20,
+             collision_coef=0.05):
     """Returns (deterministic_sr, stochastic_sr). Both are reported because the
     deterministic mean action lags well behind the stochastic behavior early in
     training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
@@ -84,6 +86,7 @@ def evaluate(model, pool, grid_size, seed, stage, n_episodes=20):
                         min_goal_dist=stage["min_goal_dist"],
                         max_goal_dist=stage["max_goal_dist"],
                         max_steps=stage["max_steps"],
+                        collision_coef=collision_coef,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     rates = []
     for deterministic in (True, False):
@@ -114,6 +117,14 @@ def main():
     ap.add_argument("--resume_from", default=None)
     ap.add_argument("--out_prefix", default="/workspace/curr2")
     ap.add_argument("--start_stage", type=int, default=0)
+    ap.add_argument("--end_stage", type=int, default=len(STAGES),
+                    help="exclusive; --end_stage 1 runs s1 only (for ablations)")
+    ap.add_argument("--collision_coef", type=float, default=0.05,
+                    help="obstacle-proximity penalty weight. Early in training "
+                         "progress is ~0, so this term dominates and freezing "
+                         "can be locally optimal -- 0 disables it.")
+    ap.add_argument("--ent_coef", default="0.02",
+                    help="SAC entropy coefficient; 'auto' tunes it")
     args = ap.parse_args()
     Algo = SAC if args.algo == "sac" else PPO
 
@@ -129,11 +140,12 @@ def main():
     # only the very first stage of a fresh run resets SB3's step counter
     first_stage = args.resume_from is None
     for idx, stage in enumerate(STAGES):
-        if idx < args.start_stage:
+        if idx < args.start_stage or idx >= args.end_stage:
             continue
         print(f"=== STAGE {stage['name']}: dist {stage['min_goal_dist']}-{stage['max_goal_dist']} "
               f"steps={stage['max_steps']} timesteps={stage['timesteps']} ===", flush=True)
-        env = make_env(pool, args.grid_size, args.seed, stage, args.arm)
+        env = make_env(pool, args.grid_size, args.seed, stage, args.arm,
+                       collision_coef=args.collision_coef)
         policy_kwargs = {}
         if args.arm == "equivariant":
             from envs.equivariant_extractor import D4EquivariantExtractor
@@ -184,7 +196,10 @@ def main():
             model = SAC("MultiInputPolicy", env, seed=args.seed, verbose=1,
                         buffer_size=100_000, learning_starts=1000,
                         batch_size=256, train_freq=1, gradient_steps=1,
-                        tau=0.005, ent_coef=0.02, policy_kwargs=policy_kwargs)
+                        tau=0.005,
+                        ent_coef=(args.ent_coef if args.ent_coef == "auto"
+                                  else float(args.ent_coef)),
+                        policy_kwargs=policy_kwargs)
         else:
             model = PPO("MultiInputPolicy", env, seed=args.seed, verbose=1,
                          n_steps=256, batch_size=64, ent_coef=0.01,
@@ -199,14 +214,17 @@ def main():
         model.save_replay_buffer(f"{args.out_prefix}_{stage['name']}_buffer.pkl")
         env.close()
 
-        sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed, stage)
+        sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
+                                    stage, collision_coef=args.collision_coef)
         print(f"=== STAGE {stage['name']} DONE: success_rate={sr_det:.2%} "
               f"stochastic={sr_stoch:.2%} (own difficulty) ===", flush=True)
         results[stage["name"]] = {"deterministic": sr_det, "stochastic": sr_stoch}
 
+    last = STAGES[min(args.end_stage, len(STAGES)) - 1]
     sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed,
-                                 STAGES[-1], n_episodes=30)
-    print(f"=== FINAL full-random task success_rate={sr_det:.2%} "
+                                 last, n_episodes=30,
+                                 collision_coef=args.collision_coef)
+    print(f"=== FINAL ({last['name']}) success_rate={sr_det:.2%} "
           f"stochastic={sr_stoch:.2%} ===", flush=True)
     results["final_full_random"] = {"deterministic": sr_det, "stochastic": sr_stoch}
     print(json.dumps(results, indent=2), flush=True)
