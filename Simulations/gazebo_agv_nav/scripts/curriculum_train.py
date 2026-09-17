@@ -126,6 +126,8 @@ def main():
     ckpt = args.resume_from
     results = {}
     model = None
+    # only the very first stage of a fresh run resets SB3's step counter
+    first_stage = args.resume_from is None
     for idx, stage in enumerate(STAGES):
         if idx < args.start_stage:
             continue
@@ -138,9 +140,36 @@ def main():
             policy_kwargs = {"features_extractor_class": D4EquivariantExtractor,
                               "features_extractor_kwargs": {"grid_feat_dim": 64}}
 
-        if ckpt:
+        if model is not None:
+            # Keep ONE model across stages and just swap the env, instead of
+            # reloading from the checkpoint. Algo.load() restores the weights
+            # but hands back an EMPTY replay buffer, and because
+            # reset_num_timesteps=False leaves num_timesteps well above
+            # learning_starts, SB3 then began gradient updates on the very
+            # first step of the new stage -- drawing 256-sample batches from a
+            # buffer holding a handful of transitions. Every stage boundary
+            # hammered the network with near-duplicate data, and the damage
+            # compounded as the stages got harder: s1 reached 90% (fresh model,
+            # so learning_starts was honoured), then s2 degraded and s3/s4
+            # collapsed to 0% -- far below the 70% a map-blind scripted
+            # controller gets. Keeping the model keeps its buffer, its critic,
+            # and its optimizer state. (This is also the real cause of the
+            # rise-then-decline pattern section 6.7 attributed to the UTD
+            # ratio.)
+            model.set_env(env)
+            print(f"continuing with in-memory model and replay buffer "
+                  f"({model.replay_buffer.size()} transitions)", flush=True)
+        elif ckpt:
             model = Algo.load(ckpt, env=env)
-            print(f"resumed from {ckpt}", flush=True)
+            buf = f"{os.path.splitext(ckpt)[0]}_buffer.pkl"
+            if os.path.exists(buf):
+                model.load_replay_buffer(buf)
+                print(f"resumed from {ckpt} + {model.replay_buffer.size()} "
+                      f"buffered transitions", flush=True)
+            else:
+                print(f"resumed from {ckpt} WITHOUT a replay buffer -- the "
+                      f"first updates of this stage will overfit a nearly "
+                      f"empty buffer; expect a dip", flush=True)
         elif args.algo == "sac":
             # fixed (not "auto") ent_coef: auto-tuning collapsed to ~0.0003
             # within the first stage, killing exploration far too early and
@@ -160,10 +189,14 @@ def main():
             model = PPO("MultiInputPolicy", env, seed=args.seed, verbose=1,
                          n_steps=256, batch_size=64, ent_coef=0.01,
                          policy_kwargs=policy_kwargs)
-        model.learn(total_timesteps=stage["timesteps"], reset_num_timesteps=(ckpt is None),
+        model.learn(total_timesteps=stage["timesteps"], reset_num_timesteps=first_stage,
                     callback=SuccessRateCallback(log_every=2000))
+        first_stage = False
         ckpt = f"{args.out_prefix}_{stage['name']}.zip"
         model.save(ckpt)
+        # the buffer is saved alongside so --resume_from can restore it too;
+        # without it a resumed run hits the same empty-buffer cliff
+        model.save_replay_buffer(f"{args.out_prefix}_{stage['name']}_buffer.pkl")
         env.close()
 
         sr_det, sr_stoch = evaluate(model, pool, args.grid_size, args.seed, stage)
