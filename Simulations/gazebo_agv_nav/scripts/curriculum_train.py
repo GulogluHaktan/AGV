@@ -78,7 +78,7 @@ def make_env(pool, grid_size, seed, stage, arm, collision_coef=0.05,
 
 
 def evaluate(model, pool, grid_size, seed, stage, n_episodes=20,
-             collision_coef=0.05, include_position=True):
+             collision_coef=0.05, include_position=True, reward_scale=1.0):
     """Returns (deterministic_sr, stochastic_sr). Both are reported because the
     deterministic mean action lags well behind the stochastic behavior early in
     training (eval_diag.py on sac_baseline_v2_s1: det 5% vs stoch 25% — the
@@ -91,6 +91,7 @@ def evaluate(model, pool, grid_size, seed, stage, n_episodes=20,
                         max_steps=stage["max_steps"],
                         collision_coef=collision_coef,
                         include_position=include_position,
+                        reward_scale=reward_scale,
                         n_obstacle_slots=N_OBSTACLE_SLOTS)
     rates = []
     for deterministic in (True, False):
