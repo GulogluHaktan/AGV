@@ -601,8 +601,12 @@ iyileşmeye bakın: aşama ilk çeyrekten son çeyreğe anlamlı ilerlemiyorsa o
 
 ## 19. v7 çöküşü: aşama geçişlerinde replay buffer atılıyordu + occupancy ölü girdiydi (2026-09-17)
 
-`sac_baseline_v7` (yeni makine, 29 fps) s1'de %90'a çıktı, s2'de bozuldu, s3 ve s4 **%0**
-ile bitti. Kritik eşik: kapı testinde haritayı hiç kullanmayan kontrolcü s4'te %70 alıyor,
+`sac_baseline_v7` (yeni makine, 29 fps) s3 ve s4'ü **%0** ile bitirdi.
+
+**DÜZELTME (2026-09-18):** Bu bölümün ilk hâlinde "v7 s1'de %90'a çıktı" yazıyordu; bu
+YANLIŞ. v7'nin s1'i **%0/%15** ile bitmiş, yani v7 baştan sona öğrenememiş. %90 rakamı
+v5'e aitti ve yanlışlıkla v7'ye atfedildi. Aşağıdaki "s2'de bozuldu" anlatısı da bu hatalı
+öncüle dayanıyordu — gerçek tablo §20'de. Kritik eşik: kapı testinde haritayı hiç kullanmayan kontrolcü s4'te %70 alıyor,
 yani politika harita-kör bir açgözlü kontrolcünün bile çok altına düşmüş — "görev zor"
 değil, "politika bozuldu".
 
@@ -655,3 +659,45 @@ ilişkilendirmeyi öğrenmesi örnek-verimsiz olabilir. Daha güçlü bir altern
 eşdeğişken özellik alanını robotun hücresinde **örneklemek** (uzamsal ortalama almak yerine):
 o zaman özellikler yerel ve doğrudan eyleme dönüştürülebilir olur, eşdeğişkenlik de korunur.
 İlk tam koşu sonuçları geldikten sonra değerlendirilmeli.
+
+
+## 20. Asıl sorun aşama geçişi değil, öğrenmenin hiç başlamaması (2026-09-18)
+
+§19'daki "aşama geçişinde buffer atılıyor" teşhisi doğru bir hatayı buldu ve düzeltildi
+(buffer artık devrediliyor, log'da `continuing with ... 60000 transitions` ile doğrulandı).
+Ama asıl sorun o değilmiş: **s1 bile öğrenilmiyor.** On iki koşudan yalnızca biri (v5, %90)
+başardı.
+
+### 20a. Elenen hipotezler (hepsi ölçümle)
+
+| Hipotez | Test | Sonuç |
+|---|---|---|
+| Çarpışma cezası donma optimumu yaratıyor | `--collision_coef 0` vs `0.05`, s1 | %10 vs %0 — marjinal, sebep değil |
+| Entropi katsayısı yanlış ayarlı | `--ent_coef auto` | %0 — fayda yok |
+| `position` gözlemi öğrenmeyi bozdu | 2×2: ±position × 2 tohum | P1≈P2, P3≈P4, hepsi %0 — **etkisiz** |
+| Tohum varyansı | iki tohum, dört koşu | hepsi %0 — varyans değil |
+| İki makinenin ortamı farklı | rastgele politikayla ödül probu | laptop −0.91 / masaüstü −0.93, bileşenler aynı — **özdeş** |
+| RTX 5060 (Blackwell) sayısal hata veriyor | CPU↔GPU matmul/gradyan/öğrenme testi | matmul farkı 5e-05, gradyan 1e-07, ikisi de öğreniyor — **temiz** |
+| Makine farkı (laptop öğreniyor, masaüstü öğrenmiyor) | laptopta GÜNCEL kodla 2 koşu | %0 ve %5 — **makine değil** |
+| s1 bandı (2-5 m) çok zor | v5'in log'u kontrol edildi | v5 de aynı bantta koşmuş ve %90 almış — görev öğrenilebilir |
+
+### 20b. Kalan açıklama: ödül ölçeği entropi bonusunun altında kalıyor
+
+SAC `r + γV − α·log π` maksimize ediyor. α=0.02 ve std≈0.6'lık 2-B Gauss politika için
+entropi bonusu **adım başına ≈0.036**. Ödül tarafında: zaman −0.01, çarpışma en çok −0.05,
+ilerleme ±0.11 ama eğitilmemiş politikada beklenen değeri ≈0 (rastgele politika probu:
+episode başına +0.06). Yani **rastgele olmak, ilerlemekten daha çok kazandırıyor** ve 12
+koşudan 11'i tam olarak o optimuma yerleşti (aksiyon ortalaması ≈0, std ≈0.6). Orijinal SAC
+makalesinde en kritik hiperparametrenin "reward scale" olmasının sebebi budur.
+
+`--reward_scale` eklendi (commit `43162be`). Ödül ölçeğini büyütmek ile α'yı küçültmek aynı
+oranı değiştirdiği için ikisi birden sınandı; tutarlı sonuç mekanizmayı doğrular.
+
+### 20c. Süreçten çıkan yöntem notları
+
+- **Kendi hipotezini çürütecek ölçümü tasarla.** Çarpışma cezası benim eklediğim şeydi ve en
+  olası şüpheliydi; ablasyon onu eledi. `position` de benim eklemem; 2×2 onu eledi.
+- **Rastgele politika probu** çevre ile öğrenmeyi ayıran en ucuz araç: eğitilmemiş politika
+  iki ortamda aynı ödülü alıyorsa fark öğrenmededir.
+- **Bir koşunun sonucunu başka koşuya atfetme.** §19'daki hata buydu ve teşhisi bir tur
+  yanlış yöne çevirdi; log'u açıp bakmak 30 saniye sürüyordu.
