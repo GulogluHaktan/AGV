@@ -23,6 +23,17 @@ scripted controller needed about 1.5x in practice.
 """
 
 STAGES = [
+    # s0 exists so learning can start at all. Success at s1 (2-5 m) is close to
+    # unreachable by chance -- a random policy scored 0/8 there -- so SAC gets
+    # no first success to bootstrap from and 16 of 17 runs settled into a
+    # zero-mean, maximum-entropy "stand still" policy instead. s0's trips are
+    # short enough (0.1-1.3 m of closing distance, against ~0.85 m of random-walk
+    # displacement over its step budget) that chance successes are frequent.
+    # The floor stays above goal_radius=1.2 so no episode begins already solved:
+    # that was the flaw in the pre-band sampler, which inflated the reported
+    # metric. Bootstrapping and honest measurement are separable, and this
+    # separates them.
+    dict(name="s0", min_goal_dist=1.3,  max_goal_dist=2.5,  max_steps=60,  timesteps=40_000),
     dict(name="s1", min_goal_dist=2.0,  max_goal_dist=5.0,  max_steps=90,  timesteps=60_000),
     dict(name="s2", min_goal_dist=5.0,  max_goal_dist=9.0,  max_steps=180, timesteps=120_000),
     dict(name="s3", min_goal_dist=9.0,  max_goal_dist=13.0, max_steps=270, timesteps=150_000),
