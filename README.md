@@ -23,6 +23,22 @@ Hedef dergi: *Symmetry* (MDPI). Üç kol karşılaştırılır: düz PPO/SAC (ba
 
 Devir notu ve karar geçmişi: [Resources/HANDOFF.md](Resources/HANDOFF.md).
 
+### Akış şeması (nasıl çalışır)
+
+```mermaid
+flowchart TD
+  M["Gazebo AGV navigasyon ortamı"] --> K1["baseline: PPO / SAC"]
+  M --> K2["symmetric_augmentation: D4 veri çoğaltma"]
+  M --> K3["equivariant: escnn D4-CNN"]
+  K1 --> EV["Değerlendirme"]
+  K2 --> EV
+  K3 --> EV
+  EV --> O1["Örnek verimliliği"]
+  EV --> O2["Aynalı / döndürülmüş haritalarda genelleme"]
+```
+
+Aynı ortamda üç kol eğitilir ve iki ölçüt üzerinden karşılaştırılır; sim-to-real aşaması henüz başlamadı.
+
 ## Seçilmiş sonuçlar
 
 Eğitim devam ediyor / durduruldu (durum için `Resources/HANDOFF.md`). Henüz makaleye girecek nihai sonuç grafiği yok.
