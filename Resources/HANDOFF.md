@@ -16,7 +16,7 @@ DRL politikası, 3 kolla karşılaştırılıyor:
 Ölçülecek 3 şey: (a) örnek verimliliği, (b) eğitimde görülmemiş aynalı/döndürülmüş haritalarda
 genelleme (G3), (c) sim-to-real transfer gap'i (henüz başlanmadı).
 
-Literatür taraması tamamlandı: `Literatur-Taramasi/simetri-farkinda-agv-rl-literatur-taramasi.md`
+Literatür taraması tamamlandı: `~/Documents/ObsidianVault/06-Literature-Reviews/simetri-farkinda-agv-rl/simetri-farkinda-agv-rl-literatur-taramasi.md`
 ve `...-yontem-ve-gap-detay.md` (55 makale, G3/G5 boşlukları bu projenin motivasyonu).
 
 ## 2. Simülatör kararı ve geçmişi

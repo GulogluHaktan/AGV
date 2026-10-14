@@ -15,3 +15,4 @@ env.local.sh
 *_buffer.pkl
 *_curve.csv
 *_summary.json
+*.flag
