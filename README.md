@@ -1,89 +1,91 @@
+🇬🇧 English · 🇹🇷 [Türkçe](README.tr.md)
+
 # Symmetry-Exploiting DRL for AGV Path Planning
 
-**AGV navigasyonunda D4 simetrisini (4 rotasyon × ayna) kullanan derin pekiştirmeli öğrenme politikasının, simetri bilgisiz baseline ile karşılaştırıldığı makale çalışması.**
+**A paper project comparing a deep-RL policy that exploits D4 symmetry (4 rotations × mirror) in AGV navigation against a symmetry-unaware baseline.**
 
-Hedef dergi: *Symmetry* (MDPI). Üç kol karşılaştırılır: düz PPO/SAC (baseline), D4 ile veri çoğaltma (symmetric augmentation) ve E(2)-steerable eşdeğişken CNN (equivariant).
+Target journal: *Symmetry* (MDPI). Three arms are compared: plain PPO/SAC (baseline), D4 data augmentation (symmetric augmentation) and an E(2)-steerable equivariant CNN (equivariant).
 
-![Gazebo AGV sahnesi](Simulations/gazebo_agv_nav/scene3d.png)
-*Gazebo depo ortamında AGV navigasyon sahnesi.*
+![Gazebo AGV scene](Simulations/gazebo_agv_nav/scene3d.png)
+*AGV navigation scene in the Gazebo warehouse environment.*
 
-## Özet
+## Summary
 
 | | |
 |---|---|
-| **Problem** | AGV yol planlamasında simetriyi kullanarak örnek verimliliği ve görülmemiş (aynalı/döndürülmüş) haritalarda genellemeyi artırmak |
-| **Yöntem** | 3 kol: baseline, symmetric_augmentation, equivariant (escnn D4-CNN); PPO/SAC |
-| **Simülasyon / donanım** | Gazebo AGV navigasyon ortamı (`Simulations/gazebo_agv_nav`); Isaac Sim denendi, GPU/sürücü uyumsuzluğu nedeniyle terk edildi |
-| **Makale** | `Paper/` — TODO: taslak PDF eklenecek |
+| **Problem** | Using symmetry in AGV path planning to improve sample efficiency and generalization to unseen (mirrored/rotated) maps |
+| **Method** | 3 arms: baseline, symmetric_augmentation, equivariant (escnn D4-CNN); PPO/SAC |
+| **Simulation / hardware** | Gazebo AGV navigation environment (`Simulations/gazebo_agv_nav`); Isaac Sim was tried and abandoned due to GPU/driver incompatibility |
+| **Paper** | `Paper/` — TODO: add draft PDF |
 
-### Sistem mimarisi
+### System architecture
 
-![mimari](assets/architecture.png)
-*TODO: `assets/architecture.png` — baseline / augmentation / equivariant kollarını gösteren blok şeması eklenecek.*
+![architecture](assets/architecture.png)
+*TODO: add `assets/architecture.png` — block diagram of the baseline / augmentation / equivariant arms.*
 
-Devir notu ve karar geçmişi: [Resources/HANDOFF.md](Resources/HANDOFF.md).
+Handover note and decision history: [Resources/HANDOFF.md](Resources/HANDOFF.md) (Turkish).
 
-### Akış şeması (nasıl çalışır)
+### Flow diagram (how it works)
 
 ```mermaid
 flowchart TD
-  M["Gazebo AGV navigasyon ortamı"] --> K1["baseline: PPO / SAC"]
-  M --> K2["symmetric_augmentation: D4 veri çoğaltma"]
+  M["Gazebo AGV navigation environment"] --> K1["baseline: PPO / SAC"]
+  M --> K2["symmetric_augmentation: D4 data augmentation"]
   M --> K3["equivariant: escnn D4-CNN"]
-  K1 --> EV["Değerlendirme"]
+  K1 --> EV["Evaluation"]
   K2 --> EV
   K3 --> EV
-  EV --> O1["Örnek verimliliği"]
-  EV --> O2["Aynalı / döndürülmüş haritalarda genelleme"]
+  EV --> O1["Sample efficiency"]
+  EV --> O2["Generalization on mirrored / rotated maps"]
 ```
 
-Aynı ortamda üç kol eğitilir ve iki ölçüt üzerinden karşılaştırılır; sim-to-real aşaması henüz başlamadı.
+Three arms are trained in the same environment and compared on two criteria; the sim-to-real stage has not started yet.
 
-## Seçilmiş sonuçlar
+## Selected results
 
-Eğitim devam ediyor / durduruldu (durum için `Resources/HANDOFF.md`). Henüz makaleye girecek nihai sonuç grafiği yok.
-*TODO: `plots/sonuc_1.png` (örnek verimliliği), `plots/sonuc_2.png` (genelleme) eklenecek.*
+Training is in progress / paused (see `Resources/HANDOFF.md`). There are no final result plots for the paper yet.
+*TODO: add `plots/sonuc_1.png` (sample efficiency) and `plots/sonuc_2.png` (generalization).*
 
-*Tüm şekiller `plots/` klasöründe tutulacaktır.*
+*All figures will be kept in the `plots/` folder.*
 
-## Kurulum
+## Installation
 
-### Gereksinimler
-- Linux, Python 3.x, Gazebo; GPU önerilir (eğitim için)
-- `escnn` (equivariant kol için)
+### Requirements
+- Linux, Python 3.x, Gazebo; GPU recommended (training)
+- `escnn` (for the equivariant arm)
 
-### Adımlar
+### Steps
 ```bash
 git clone https://github.com/GulogluHaktan/AGV.git
 cd AGV
-# TODO: requirements.txt eklenecek (şu an yok)
+# TODO: add requirements.txt (none yet)
 ```
 
-## Kullanım
+## Usage
 
-Eğitim ve değerlendirme betikleri `RL/training`, `RL/eval` ve `Simulations/gazebo_agv_nav` altındadır.
-*TODO: tek komutluk "hazır modeli çalıştır" ve beklenen çıktı eklenecek.*
+Training and evaluation scripts are under `RL/training`, `RL/eval` and `Simulations/gazebo_agv_nav`.
+*TODO: add a one-command "run the ready model" and expected output.*
 
-## Sonuçları yeniden üret
+## Reproducing the results
 
-| Şekil | Komut |
+| Figure | Command |
 |---|---|
 | `plots/sonuc_1.png` | TODO |
 
-## Proje yapısı
+## Project structure
 
 ```
 AGV_AGR_Paper/
 ├── RL/                  # agents, training, eval
 ├── Simulations/         # gazebo_agv_nav, isaac_agv_nav
-├── Paper/               # makale taslağı
+├── Paper/               # paper draft
 ├── Resources/           # HANDOFF.md, CLAUDE.md, Mission
-├── Outputs/  Scripts/   # çıktılar, yardımcı betikler
-├── assets/              # README görselleri
+├── Outputs/  Scripts/   # outputs, helper scripts
+├── assets/              # README images
 └── README.md
 ```
 
-## Atıf, lisans, iletişim
+## Citation, license, contact
 
 ```bibtex
 @misc{agvsym2026,
@@ -93,4 +95,4 @@ AGV_AGR_Paper/
   url    = {https://github.com/GulogluHaktan/AGV}
 }
 ```
-Lisans: TODO. İletişim: MTA Yapay Zeka Merkezi, Haktan Güloğlu.
+License: TODO. Contact: MTA Artificial Intelligence Center, Haktan Güloğlu.
